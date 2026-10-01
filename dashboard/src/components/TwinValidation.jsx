@@ -23,8 +23,8 @@ const Tip = ({ active, payload, fmt }) => {
 
 export default function TwinValidation({ twin }) {
   const [ft, setFt] = useState('lubrication');
-  const speedup = twin.ml_median_delay_s / twin.median_delay_s;
-  const rulGain = twin.rul_median_abs_err_s.linear / twin.rul_median_abs_err_s.twin;
+  const fa = twin.false_alarms;
+  const c90 = twin.coverage.find((c) => c.nominal === 90);
   const delays = twin.by_type.map((d) => ({ fault: FAULT_SHORT[d.fault_type], twin: d.twin_delay_s, ml: d.ml_delay_s }));
   const calib = [{ nominal: 0, empirical: 0 }, ...twin.coverage.map((c) => ({ nominal: c.nominal, empirical: c.empirical * 100 })), { nominal: 100, empirical: 100 }];
   const trace = (twin.health_traces[ft] || []).map((p) => ({ ...p, band: [p.p5, p.p95] }));
@@ -34,15 +34,15 @@ export default function TwinValidation({ twin }) {
     <div className="panel flagship mt">
       <div className="panel-title">
         <Atom size={15} /> Flagship: Bayesian health twin vs ML ensemble
-        <span className="right dim" style={{ fontSize: 11 }}>same 120 held-out flights · filter tuned only on separate simulated flights</span>
+        <span className="right dim" style={{ fontSize: 11 }}>same 120 test flights · filter tuned only on separate simulated flights</span>
       </div>
 
       <div className="grid g5" style={{ marginBottom: 16 }}>
         <Stat icon={Timer} label="Median detection delay" twin={fmtDur(twin.median_delay_s)} base={fmtDur(twin.ml_median_delay_s)} baseLabel="ML ensemble" />
-        <Stat icon={Hourglass} label="RUL median error" twin={fmtDur(twin.rul_median_abs_err_s.twin)} base={fmtDur(twin.rul_median_abs_err_s.linear)} baseLabel="linear trend" />
+        <Stat icon={Hourglass} label="RUL median error" twin={fmtDur(twin.rul_median_abs_err_s.twin)} base={fmtDur(twin.rul_median_abs_err_s.linear)} baseLabel="HI linear trend*" />
         <Stat icon={Target} label={`RUL within ±${twin.alpha_lambda.alpha * 100}% (α-λ)`} twin={pct(twin.alpha_lambda.twin)} base={pct(twin.alpha_lambda.linear, 1)} baseLabel="linear trend" />
         <Stat icon={Crosshair} label="Hidden-health error" twin={twin.health_mae.toFixed(3)} note="mean |estimate − true health|" />
-        <Stat icon={ShieldCheck} label="False alarms / FH" twin={twin.false_alarms_per_fh.toFixed(2)} note={`detection ${pct(twin.detection_rate)} · diagnosis ${pct(twin.diagnosis_accuracy)}`} />
+        <Stat icon={ShieldCheck} label="False alarms" twin={`${fa.events} events`} note={`in ${fa.healthy_hours.toFixed(0)} h · 95% upper ${fa.ci95[1].toFixed(3)} /FH · detect ${twin.detection.k}/${twin.detection.n}, diagnose ${twin.diagnosis.k}/${twin.diagnosis.n}`} />
       </div>
 
       <div className="grid g2">
@@ -62,8 +62,9 @@ export default function TwinValidation({ twin }) {
             </ResponsiveContainer>
           </div>
           <div className="dim" style={{ fontSize: 11.5 }}>
-            The twin detects faults {speedup.toFixed(1)}× faster (median) and estimates RUL {rulGain.toFixed(1)}× more accurately, because it
-            tests physical hypotheses against every 1 Hz sample instead of waiting for a statistical anomaly to persist.
+            Not a like-for-like race: the ML path waits for a 60 s window plus 8 × 10 s of persistence, while the twin decides at
+            1 Hz, and the twin uses the simulator&apos;s own equations. *The HI linear trend extrapolates to HI = 50, not to the physical
+            failure threshold the truth uses, so its RUL error is partly a definition mismatch.
           </div>
         </div>
         <div>
@@ -82,8 +83,9 @@ export default function TwinValidation({ twin }) {
             </ResponsiveContainer>
           </div>
           <div className="dim" style={{ fontSize: 11.5 }}>
-            Over {twin.n_rul_points.toLocaleString()} RUL predictions: the 90% interval contains the true failure time {pct(twin.coverage[2].empirical)} of the time
-            (perfect = on the diagonal). Slightly below the diagonal means slightly over-confident on the test set; it was 91% on the tuning flights.
+            Over {twin.n_rul_points.toLocaleString()} RUL predictions: the 90% interval contains the true failure time {pct(c90.empirical, 1)} of the time
+            (95% CI {pct(c90.ci95[0], 1)}–{pct(c90.ci95[1], 1)}, bootstrapped over flights). Perfect calibration lies on the diagonal; the 50% interval
+            is somewhat over-confident.
           </div>
         </div>
       </div>

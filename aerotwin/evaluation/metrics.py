@@ -1,6 +1,7 @@
 from aerotwin.evaluation.detection_rate import evaluate_detections
 from aerotwin.evaluation.lead_time import summarize_lead_times
-from aerotwin.evaluation.false_alarms import compute_false_alarms_per_fh
+from aerotwin.evaluation.false_alarms import count_false_alarms
+from aerotwin.evaluation.stats import clopper_pearson
 
 
 def compute_metrics(predictions, fault_log, mission_durations):
@@ -13,8 +14,12 @@ def compute_metrics(predictions, fault_log, mission_durations):
     detections = evaluate_detections(predictions, fault_log)
     lead_times = detections.dropna(subset=["lead_time"]).set_index("mission_id")["lead_time"].to_dict()
 
+    fa = count_false_alarms(predictions, fault_log, mission_durations)
+    k, n = int(detections["detected"].sum()), len(detections)
     return {
         "detection_rate": detections.groupby("fault_type")["detected"].mean().to_dict(),
+        "detection_overall": {"detected": k, "n": n, "ci95": clopper_pearson(k, n)},
         "lead_time": summarize_lead_times(lead_times),
-        "false_alarms_per_fh": compute_false_alarms_per_fh(predictions, fault_log, mission_durations),
+        "false_alarms_per_fh": fa["per_fh"],
+        "false_alarms": fa,
     }

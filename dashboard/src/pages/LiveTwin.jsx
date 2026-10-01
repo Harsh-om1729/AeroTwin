@@ -24,9 +24,9 @@ export default function LiveTwin({ fleet, selected, onSelect }) {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Live Digital Twin</h1>
+          <h1 className="page-title">Digital Twin Replay</h1>
           <div className="page-sub">
-            Flight replay through the full pipeline: physics twin → residuals → Isolation Forest / PCA / LSTM autoencoder →
+            Replay of a recorded (simulated) test flight through the full pipeline: physics twin → residuals → Isolation Forest / PCA / LSTM autoencoder →
             fused Health Index → RUL → fault diagnosis → Go/No-Go. One step = one 60 s window advanced by 10 s.
           </div>
         </div>

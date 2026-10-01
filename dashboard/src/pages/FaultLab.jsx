@@ -8,7 +8,7 @@ const FAULTS = [
   { id: '', icon: ShieldCheck, name: 'Healthy engine', desc: 'No fault. Tests that the twin does not raise false alarms.' },
   { id: 'lubrication', icon: Droplet, name: 'Lubrication loss', desc: 'Oil pump / oil starvation: oil pressure decays.' },
   { id: 'cooling_degradation', icon: Thermometer, name: 'Cooling loss', desc: 'Blocked radiator / baffles: CHT and oil temp climb.' },
-  { id: 'injector_abnormality', icon: Fuel, name: 'Injector fault', desc: 'Fuel maldistribution: one cylinder runs hot (EGT↑).' },
+  { id: 'injector_abnormality', icon: Fuel, name: 'Lean cylinder', desc: 'Intake leak / fuel metering: one cylinder runs lean (EGT↑).' },
   { id: 'misfire', icon: Zap, name: 'Ignition misfire', desc: 'Fouled plug: one cylinder EGT drops, vibration rises.' },
   { id: 'abnormal_vibration', icon: Waves, name: 'Bearing wear', desc: 'Mechanical wear: vibration grows, temperatures normal.' },
 ];
@@ -131,7 +131,7 @@ export default function FaultLab() {
             {busy ? 'Simulating 1-hour flight…' : 'Run simulation'}
           </button>
           <span className="dim" style={{ fontSize: 12.5 }}>
-            <Sparkles size={13} style={{ verticalAlign: -2 }} /> 3,600 physics steps + 355 AI inference windows, ≈ 1 s
+            <Sparkles size={13} style={{ verticalAlign: -2 }} /> 3,600 physics steps, 355 ML windows and a 1,320-particle filter, ≈ 2 s
           </span>
           {error && <span style={{ color: 'var(--crit)' }}>{error}</span>}
         </div>

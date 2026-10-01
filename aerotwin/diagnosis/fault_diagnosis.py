@@ -9,7 +9,9 @@ the physical signature each fault mode produces in the engine model:
     --------------------  ---------------------------------------------------
     lubrication           oil pressure drops below twin
     cooling_degradation   oil temp AND all four CHTs rise together
-    injector_abnormality  one cylinder's EGT rises (lean/fuel maldistribution)
+    injector_abnormality  one cylinder's EGT rises (lean cylinder; the 912 S/ULS is
+                          carburetted, so this models an intake leak or
+                          fuel-metering fault, not a fuel injector)
     misfire               one cylinder's EGT drops + vibration rises
     abnormal_vibration    vibration rises with no EGT asymmetry (bearing)
 
@@ -21,7 +23,7 @@ import numpy as np
 FAULT_LABELS = {
     "lubrication": "Lubrication system degradation",
     "cooling_degradation": "Cooling system degradation",
-    "injector_abnormality": "Fuel injector abnormality",
+    "injector_abnormality": "Lean cylinder (fuel metering / intake leak)",
     "misfire": "Ignition misfire",
     "abnormal_vibration": "Abnormal vibration (bearing wear)",
 }
@@ -29,7 +31,7 @@ FAULT_LABELS = {
 FAULT_ACTIONS = {
     "lubrication": "Inspect oil pump, oil level, filter and pressure relief valve.",
     "cooling_degradation": "Inspect coolant level/radiator, cowling airflow and baffles.",
-    "injector_abnormality": "Inspect fuel injector / carburetor on the flagged cylinder.",
+    "injector_abnormality": "Inspect intake manifold and carburettor feeding the flagged cylinder for leaks or fuel-metering faults.",
     "misfire": "Inspect spark plugs and ignition leads on the flagged cylinder.",
     "abnormal_vibration": "Inspect crankshaft bearings, propeller balance and engine mounts.",
 }

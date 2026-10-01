@@ -29,7 +29,7 @@ a generic locally-linear decline with a slowly drifting rate.
 """
 import numpy as np
 
-from aerotwin.simulator.engine_model import EngineModel
+from aerotwin.simulator.engine_model import EngineModel, apply_health
 from aerotwin.simulator.fault_injection import CRITICAL_HEALTH
 
 MODES = (
@@ -115,18 +115,18 @@ class HealthParticleFilter:
     def _predict(self, rpm, throttle, alt_ft, ambient_c):
         e = self.physics.expected(rpm, throttle, alt_ft, ambient_c)
         h = self.h
-        oil = np.where(self.is_lub, h, 1.0)
-        cool = np.where(self.is_cool, h, 1.0)
-        bear = np.where(self.is_bear, h, 1.0)
-        inj = 1.0 - self.inj_onehot * (1.0 - h)[:, None]
-        ign = 1.0 - self.ign_onehot * (1.0 - h)[:, None]
-
-        oil_p = e["oil_press_bar"] * oil
-        self.oil_t += (e["oil_temp_c"] * (2.0 - cool) - self.oil_t) / 120.0
-        self.cht += (e["cht_c"] * (2.0 - cool)[:, None] - self.cht) / 60.0
-        self.egt += (e["egt_c"] * (2.0 - inj) - 100.0 * (1.0 - ign) - self.egt) / 5.0
-        vib = e["vib_rms_g"] * (2.0 - bear) + 5.0 * (1.0 - ign.mean(axis=1))
-        return np.column_stack([oil_p, self.oil_t, self.cht, self.egt, vib])
+        t = apply_health(
+            e,
+            oil=np.where(self.is_lub, h, 1.0),
+            cooling=np.where(self.is_cool, h, 1.0),
+            injector=1.0 - self.inj_onehot * (1.0 - h)[:, None],
+            ignition=1.0 - self.ign_onehot * (1.0 - h)[:, None],
+            bearing=np.where(self.is_bear, h, 1.0),
+        )
+        self.oil_t += (t["oil_temp_c"] - self.oil_t) / 120.0
+        self.cht += (t["cht_c"] - self.cht) / 60.0
+        self.egt += (t["egt_c"] - self.egt) / 5.0
+        return np.column_stack([t["oil_press_bar"], self.oil_t, self.cht, self.egt, t["vib_rms_g"]])
 
     def _update(self, pred, y):
         ll = -0.5 * (((y - pred) / self.sigma) ** 2).sum(axis=1)

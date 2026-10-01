@@ -2,6 +2,7 @@
 # AeroTwin one-command launcher.
 #   ./run.sh         build (if needed) and serve everything on http://localhost:8000
 #   ./run.sh --dev   backend on :8000 + Vite hot-reload dashboard on :5173
+#   ./run.sh --retrain   retrain the models before starting
 set -e
 cd "$(dirname "$0")"
 
@@ -16,14 +17,20 @@ if ! python3 -c "import fastapi, uvicorn, sklearn, torch, yaml, pyarrow, joblib,
   python3 -m pip install -r requirements.txt
 fi
 
-# 2. Trained models (train once if missing)
-if [ ! -f models/metadata.json ]; then
-  echo -e "${YELLOW}No trained models found – training (a few minutes)…${NC}"
-  [ -f data/train_healthy.parquet ] || python3 -m aerotwin.simulator.generate_dataset
+# 2. Simulated dataset. It is not stored in git (~110 MB), but generation is
+#    fully seeded, so every machine gets byte-identical flights (~1-2 min).
+if [ ! -f data/fault_log.csv ] || [ ! -f data/train_healthy.parquet ] || [ ! -f data/val_fault.parquet ]; then
+  echo -e "${YELLOW}Generating the simulated dataset (seeded, ~1-2 min)…${NC}"
+  python3 -m aerotwin.simulator.generate_dataset
+fi
+
+# 3. Trained models (committed; retrain if missing or with --retrain)
+if [ ! -f models/metadata.json ] || [ "$1" == "--retrain" ]; then
+  echo -e "${YELLOW}Training models (a few minutes)…${NC}"
   python3 -m aerotwin.evaluation.train_models
 fi
 
-# 3. Dashboard dependencies
+# 4. Dashboard dependencies
 if [ ! -d dashboard/node_modules ]; then
   echo -e "${YELLOW}Installing dashboard dependencies…${NC}"
   (cd dashboard && npm install)
@@ -39,14 +46,14 @@ if [ "$1" == "--dev" ]; then
   wait
 fi
 
-# 4. Production build of the dashboard (only when sources changed)
+# 5. Production build of the dashboard (only when sources changed)
 if [ ! -f dashboard/dist/index.html ] || [ -n "$(find dashboard/src dashboard/index.html -newer dashboard/dist/index.html 2>/dev/null)" ]; then
   echo -e "${YELLOW}Building dashboard…${NC}"
   (cd dashboard && npm run build >/dev/null)
 fi
 
-# 5. Validation cache is built automatically on first start (~1 min, once)
-[ -f cache/results.json ] || echo -e "${YELLOW}First start: evaluating models on 120 held-out flights (~1 min, cached afterwards)…${NC}"
+# 6. Validation cache is built automatically on first start (~1 min, once)
+[ -f cache/results.json ] || echo -e "${YELLOW}First start: evaluating on the 120 test flights (~3 min, cached afterwards)…${NC}"
 
 echo -e "${GREEN}✓ Starting – open http://localhost:$PORT${NC}  (API docs: http://localhost:$PORT/docs, Ctrl+C to stop)"
 ( sleep 8; command -v open >/dev/null && open "http://localhost:$PORT" ) &

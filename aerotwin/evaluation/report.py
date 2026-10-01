@@ -15,6 +15,8 @@ import numpy as np
 import pandas as pd
 
 from aerotwin.evaluation.detection_rate import evaluate_detections
+from aerotwin.evaluation.false_alarms import count_false_alarms
+from aerotwin.evaluation.stats import clopper_pearson
 from aerotwin.evaluation.metrics import compute_metrics
 from aerotwin.features.residuals import compute_residuals
 from aerotwin.health.health_index import alert_logic, calibrate_p, compute_health_index
@@ -54,17 +56,31 @@ def _single_model_p(bundle):
     return {n: float(calibrate_p(np.median(np.concatenate(v)), target_hi=95.0)) for n, v in percs.items()}
 
 
-def build_report():
+# (fault split, its fault log, healthy split). "test" is the frozen benchmark
+# that is evaluated once; "dev" is the only fault data used while developing
+# diagnosis rules, thresholds and filter settings.
+SPLITS = {
+    "test": ("test_fault", "fault_log.csv", "test_healthy"),
+    "dev": ("val_fault", "val_fault_log.csv", "val_healthy"),
+}
+
+
+def _ci(k, n):
+    return {"k": int(k), "n": int(n), "rate": k / n if n else None, "ci95": clopper_pearson(k, n) if n else None}
+
+
+def build_report(split="test"):
+    fault_split, log_file, healthy_split = SPLITS[split]
     bundle = get_bundle()
-    fault_log = pd.read_csv(DATA_DIR / "fault_log.csv")
+    fault_log = pd.read_csv(DATA_DIR / log_file)
     truth = fault_log.set_index("mission_id")
 
     timelines = {}
     for mid in fault_log["mission_id"]:
-        timelines[mid] = compute_mission_timeline(load_mission_df("test_fault", mid), bundle)
-    healthy_ids = list(_mission_ids("test_healthy"))
+        timelines[mid] = compute_mission_timeline(load_mission_df(fault_split, mid), bundle)
+    healthy_ids = list(_mission_ids(healthy_split))
     for mid in healthy_ids:
-        timelines[mid] = compute_mission_timeline(load_mission_df("test_healthy", mid), bundle)
+        timelines[mid] = compute_mission_timeline(load_mission_df(healthy_split, mid), bundle)
     durations = {mid: MISSION_S for mid in timelines}
 
     # ---- 1. Headline detection metrics (fused model) ----------------------
@@ -91,6 +107,8 @@ def build_report():
             "detection_rate": float(np.mean(rates)),
             "median_lead_s": m["lead_time"]["median_s"],
             "false_alarms_per_fh": m["false_alarms_per_fh"],
+            "false_alarm_events": m["false_alarms"]["events"],
+            "false_alarms_ci95": m["false_alarms"]["ci95"],
         })
 
     # ---- 3. Fault diagnosis (isolation) accuracy --------------------------
@@ -147,9 +165,14 @@ def build_report():
     twin = _evaluate_twin(timelines, truth, healthy_ids, per_mission)
 
     report = {
+        "split": split,
+        "dataset_version": str(fault_log["dataset_version"].iloc[0]) if "dataset_version" in fault_log else None,
         "twin": twin,
         "metrics": metrics,
         "summary": {
+            "detection": _ci(int(det["detected"].sum()), len(det)),
+            "diagnosis": _ci(n_correct, len(fault_log)),
+            "cylinder": _ci(cyl_ok, cyl_n),
             "n_fault_missions": int(len(fault_log)),
             "n_healthy_missions": len(healthy_ids),
             "healthy_flight_hours": float(sum(min(truth["fault_start_t"].get(m, MISSION_S), MISSION_S)
@@ -180,14 +203,15 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
     cover = {50: [], 80: [], 90: []}
     rul_twin_err, rul_lin_err, alpha_twin, alpha_lin = [], [], [], []
     fan = {}
-    false_windows, healthy_s = 0, 0.0
+    twin_flags = {}
+    cover_by_flight = []  # (flight, nominal) -> list of hits, for a flight-level bootstrap
 
     for mid, r in truth.iterrows():
         tl = timelines[mid]
         t0, fail, ft = r["fault_start_t"], r["failure_t"], r["fault_type"]
         shape = "lin" if ft == "misfire" else "exp"
-        healthy_s += min(t0, MISSION_S)
-        false_windows += sum(1 for x in tl if x["t"] < t0 and x["twin"]["p_degraded"] > TWIN_P)
+        twin_flags[mid] = [(x["t"], x["twin"]["p_degraded"] > TWIN_P) for x in tl]
+        hits = {50: [], 80: [], 90: []}
         det = next((x for x in tl if x["t"] >= t0 and x["twin"]["p_degraded"] > TWIN_P), None)
         m = det["twin"]["map"] if det else None
         detect_rows.append({
@@ -207,15 +231,17 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
             true = fail - x["t"]
             if tw["rul"]:
                 q = tw["rul"]
-                cover[50].append(q["p25"] <= true <= q["p75"])
-                cover[80].append(q["p10"] <= true <= q["p90"])
-                cover[90].append(q["p5"] <= true <= q["p95"])
+                for nom, (lo, hi) in {50: ("p25", "p75"), 80: ("p10", "p90"), 90: ("p5", "p95")}.items():
+                    hit = q[lo] <= true <= q[hi]
+                    cover[nom].append(hit)
+                    hits[nom].append(hit)
                 # compare both estimators on the same instants
                 if x["rul_s"] is not None:
                     rul_twin_err.append(abs(q["p50"] - true))
                     rul_lin_err.append(abs(x["rul_s"] - true))
                     alpha_twin.append(abs(q["p50"] - true) <= ALPHA * true)
                     alpha_lin.append(abs(x["rul_s"] - true) <= ALPHA * true)
+        cover_by_flight.append(hits)
         # one example health trace + RUL fan per fault type
         if ft not in h_trace:
             pts = [x for x in tl if t0 - 120 <= x["t"] <= min(fail + 60, MISSION_S)]
@@ -232,8 +258,20 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
             } for x in pts if x["twin"]["rul"] and x["twin"]["p_degraded"] > TWIN_P and x["t"] < fail]
 
     for mid in healthy_ids:
-        healthy_s += MISSION_S
-        false_windows += sum(1 for x in timelines[mid] if x["twin"]["p_degraded"] > TWIN_P)
+        twin_flags[mid] = [(x["t"], x["twin"]["p_degraded"] > TWIN_P) for x in timelines[mid]]
+    twin_fa = count_false_alarms(twin_flags, truth.reset_index(), {m: MISSION_S for m in twin_flags})
+
+    # coverage CI: resample whole flights (points within a flight are correlated)
+    rng = np.random.default_rng(0)
+    cov_ci = {}
+    for nom in cover:
+        flights = [f[nom] for f in cover_by_flight if f[nom]]
+        boots = []
+        for _ in range(1000):
+            pick = rng.integers(0, len(flights), len(flights))
+            pts = [h for i in pick for h in flights[i]]
+            boots.append(np.mean(pts))
+        cov_ci[nom] = (float(np.percentile(boots, 2.5)), float(np.percentile(boots, 97.5)))
 
     d = pd.DataFrame(detect_rows)
     by_type = []
@@ -248,12 +286,15 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
     med = lambda xs: float(np.median(xs)) if xs else None
     return {
         "detection_rate": float(d["twin_detected"].mean()),
+        "detection": _ci(int(d["twin_detected"].sum()), len(d)),
         "diagnosis_accuracy": float(d["twin_diag_ok"].mean()),
+        "diagnosis": _ci(int(d["twin_diag_ok"].sum()), len(d)),
         "median_delay_s": float(d["twin_delay_s"].median()),
         "ml_median_delay_s": float(d["ml_delay_s"].median()),
-        "false_alarms_per_fh": false_windows / (healthy_s / 3600),
+        "false_alarms_per_fh": twin_fa["per_fh"],
+        "false_alarms": twin_fa,
         "health_mae": float(np.mean(h_err)),
-        "coverage": [{"nominal": k, "empirical": float(np.mean(v))} for k, v in cover.items()],
+        "coverage": [{"nominal": k, "empirical": float(np.mean(v)), "ci95": cov_ci[k]} for k, v in cover.items()],
         "n_rul_points": len(cover[90]),
         "rul_median_abs_err_s": {"twin": med(rul_twin_err), "linear": med(rul_lin_err)},
         "alpha_lambda": {"alpha": ALPHA, "twin": float(np.mean(alpha_twin)), "linear": float(np.mean(alpha_lin))},
@@ -263,17 +304,29 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
     }
 
 
+def _inputs_mtime():
+    """Newest of the trained models and the evaluation data: the cache is
+    stale if either was regenerated after it was written."""
+    paths = [ROOT / "models" / "metadata.json"] + list(DATA_DIR.glob("*.parquet")) + list(DATA_DIR.glob("*.csv"))
+    return max(p.stat().st_mtime for p in paths if p.exists())
+
+
 def load_or_build(rebuild=False):
-    models_mtime = (ROOT / "models" / "metadata.json").stat().st_mtime
-    if not rebuild and CACHE_PATH.exists() and CACHE_PATH.stat().st_mtime > models_mtime:
+    if not rebuild and CACHE_PATH.exists() and CACHE_PATH.stat().st_mtime > _inputs_mtime():
         return json.load(open(CACHE_PATH))
-    report = build_report()
+    report = build_report("test")
     CACHE_PATH.parent.mkdir(exist_ok=True)
     json.dump(report, open(CACHE_PATH, "w"))
     return report
 
 
 if __name__ == "__main__":
-    r = load_or_build(rebuild=True)
+    import sys
+    if "--dev" in sys.argv:
+        # development evaluation on val_fault: safe to look at while tuning
+        r = build_report("dev")
+        json.dump(r, open(ROOT / "cache" / "results_dev.json", "w"))
+    else:
+        r = load_or_build(rebuild=True)
     twin = {k: v for k, v in r["twin"].items() if k not in ("health_traces", "rul_fans")}
     print(json.dumps({k: r[k] for k in ["metrics", "summary", "ablation"]} | {"twin": twin}, indent=2))

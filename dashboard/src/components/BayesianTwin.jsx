@@ -9,7 +9,7 @@ import { HYP_LABEL, clock, fmtDur, trueHealth } from '../util';
 const COMPONENT = {
   lubrication: 'oil-system health',
   cooling_degradation: 'cooling efficiency',
-  injector_abnormality: 'injector health',
+  injector_abnormality: 'mixture health',
   misfire: 'ignition health',
   abnormal_vibration: 'bearing health',
 };

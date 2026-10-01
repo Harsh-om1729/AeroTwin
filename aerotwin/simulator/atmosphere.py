@@ -16,6 +16,15 @@ def isa(alt_ft: float, isa_dev_c: float = 0.0):
     sigma = rho / 1.225                # density ratio
     return T, P, sigma
 
+def isa_from_oat(alt_ft: float, oat_c: float):
+    """Atmosphere from pressure altitude and the measured outside air
+    temperature (OAT). The ISA deviation is OAT minus the *standard
+    temperature at that altitude* -- not minus 15 C, which would apply the
+    lapse rate twice. Returns T (K, equal to the OAT), P (Pa), sigma.
+    """
+    t_std_c = T0 - L * alt_ft * 0.3048 - 273.15
+    return isa(alt_ft, oat_c - t_std_c)
+
 def power_lapse(sigma: float):
     """
     Gagg-Ferrar approximation for naturally aspirated engines.

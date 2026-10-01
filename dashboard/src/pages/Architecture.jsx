@@ -21,10 +21,11 @@ const STACK = [
 ];
 
 const DATA = [
-  ['Train (healthy)', 'UAV-01…07', '140 flights', 'Standard profile', 'Fit scaler + 3 detectors'],
-  ['Validation (healthy)', 'UAV-01…07', '28 flights', 'Standard profile', 'Fusion percentiles, HI calibration'],
-  ['Test (healthy)', 'UAV-08…10', '60 flights', 'Hot weather (+35 °C)', 'False-alarm rate'],
-  ['Test (fault)', 'UAV-08…10', '60 flights', '5 fault types × 12', 'Detection, lead time, diagnosis, RUL'],
+  ['Train (healthy)', 'seed block 1', '140 flights', 'Standard profile', 'Fit scaler + 3 detectors'],
+  ['Validation (healthy)', 'seed block 2', '28 flights', 'Standard profile', 'Fusion percentiles, HI calibration'],
+  ['Development (fault)', 'seed block 4', '20 flights', '5 fault types × 4', 'The only fault data used while developing'],
+  ['Test (healthy)', 'seed block 3', '60 flights', 'Hot weather (+35 °C)', 'False-alarm events (final)'],
+  ['Test (fault)', 'seed block 5', '60 flights', '5 fault types × 12', 'Detection, diagnosis, RUL (final, evaluated once)'],
 ];
 
 export default function Architecture({ meta }) {
@@ -63,7 +64,7 @@ export default function Architecture({ meta }) {
           <div style={{ color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.7 }}>
             The ML ensemble answers <i>&quot;is something abnormal?&quot;</i>. The Bayesian twin answers <i>&quot;which physical component is degrading,
             how healthy is it right now, and when will it fail, with what certainty?&quot;</i> It infers the <b style={{ color: 'var(--text)' }}>hidden
-            health parameters</b> of the engine (oil system, cooling, each injector, each ignition circuit, bearings) that no sensor measures directly.
+            health parameters</b> of the engine (oil system, cooling, each cylinder's mixture, each ignition circuit, bearings) that no sensor measures directly.
             <ul style={{ paddingLeft: 18, margin: '10px 0 0' }}>
               <li><b style={{ color: 'var(--text)' }}>Bank of 11 particle filters</b>, one per fault hypothesis (×120 particles), with Bayesian model selection between them.</li>
               <li>Each particle carries health <span className="mono">h</span>, degradation rate <span className="mono">r</span>, an unknown-onset flag (jump-Markov) and its own thermal state, pushed through the physics engine model every second.</li>
@@ -89,16 +90,16 @@ export default function Architecture({ meta }) {
           <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.7 }}>
             <li><b style={{ color: 'var(--text)' }}>Residuals, not raw sensors.</b> A climb makes CHT rise in a healthy engine too; comparing against a lagged physics twin removes that, so models see only unexplained behaviour.</li>
             <li><b style={{ color: 'var(--text)' }}>Trained on healthy data only.</b> Real fleets have few recorded failures, so detectors learn &quot;normal&quot; and flag deviations. They need no fault labels.</li>
-            <li><b style={{ color: 'var(--text)' }}>Ensemble with percentile fusion.</b> Three different model families make uncorrelated mistakes; averaging calibrated percentiles cuts false alarms ~10× (see Validation).</li>
+            <li><b style={{ color: 'var(--text)' }}>Ensemble with percentile fusion.</b> Three different model families make partly uncorrelated mistakes; averaging calibrated percentiles reduced false-alarm events from 10–78 per single model to 1 on the test split (see Validation).</li>
             <li><b style={{ color: 'var(--text)' }}>Persistence rule.</b> An alert needs 8 consecutive windows (80 s) below HI 50, so single noisy windows never ground an aircraft.</li>
             <li><b style={{ color: 'var(--text)' }}>Physics-based diagnosis.</b> Fault isolation matches residual patterns to physical signatures, so it is explainable to a maintainer (&quot;EGT cyl 2 −5σ with vibration +2σ&quot;).</li>
-            <li><b style={{ color: 'var(--text)' }}>No leakage.</b> Test airframes (UAV-08…10) and the hot-weather profile are never seen in training; ground-truth failure time is derived analytically from the fault model.</li>
+            <li><b style={{ color: 'var(--text)' }}>No leakage, seeded data.</b> Every split comes from a disjoint seed block, so the dataset is identical on every machine. Rules and thresholds were fixed on a development split; the test split is evaluated once. Ground-truth failure time is derived analytically from the fault model.</li>
           </ul>
         </div>
         <div className="panel">
           <div className="panel-title"><Database size={15} /> Dataset split</div>
           <table className="t">
-            <thead><tr><th>Split</th><th>Airframes</th><th>Size</th><th>Conditions</th><th>Used for</th></tr></thead>
+            <thead><tr><th>Split</th><th>Seeds</th><th>Size</th><th>Conditions</th><th>Used for</th></tr></thead>
             <tbody>{DATA.map((r) => <tr key={r[0]}>{r.map((c, i) => <td key={i} style={i === 0 ? { fontWeight: 600 } : { color: 'var(--text-2)' }}>{c}</td>)}</tr>)}</tbody>
           </table>
           <div className="panel-title mt"><Layers size={15} /> Technology stack</div>
@@ -133,7 +134,7 @@ export default function Architecture({ meta }) {
         <div className="panel">
           <div className="panel-title"><TriangleAlert size={15} /> Limitations & next steps</div>
           <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.7 }}>
-            <li>Trained and validated on <b>simulated</b> flights; the fault models are idealised. Real-engine accuracy will be lower and must be re-measured.</li>
+            <li>Trained and validated on <b>simulated</b> flights; the fault models are idealised. The healthy twin and the particle filter use the <b>same equations as the simulator</b> and all simulated engines are identical, so results are an upper bound. Real-engine accuracy will be lower and must be re-measured.</li>
             <li>Next step: record a real engine run (protocol in <span className="mono">aerotwin/real_engine/recording_protocol.md</span>) and use sim-to-real calibration of the twin.</li>
             <li>RUL is a linear-trend extrapolation without uncertainty bands. A probabilistic model (e.g. particle filter) would give confidence intervals.</li>
             <li>One fault at a time; compound faults and sensor failures (stuck/drifting sensors) are not yet modelled.</li>

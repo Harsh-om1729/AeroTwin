@@ -67,7 +67,9 @@ export default function Validation({ results }) {
 
   const fused = r.ablation.find((a) => a.model === 'Fused ensemble');
   const singles = r.ablation.filter((a) => a !== fused);
-  const bestSingleFa = Math.min(...singles.map((a) => a.false_alarms_per_fh));
+  const fa = r.metrics.false_alarms;
+  const ci = (c) => (c?.ci95 ? `95% CI ${pct(c.ci95[0])}–${pct(c.ci95[1])}` : '');
+  const singleEvents = singles.map((a) => a.false_alarm_events);
   const cmMax = Math.max(...Object.values(r.confusion).flatMap((row) => Object.values(row)));
   const rulMax = Math.max(...r.rul_scatter.map((p) => Math.max(p.true_s, p.pred_s))) / 60;
   const conservative = r.rul_scatter.filter((p) => p.pred_s <= p.true_s).length / r.rul_scatter.length;
@@ -78,19 +80,20 @@ export default function Validation({ results }) {
         <div>
           <h1 className="page-title">Model Validation</h1>
           <div className="page-sub">
-            Evaluated on held-out airframes (UAV-08…10) the models never saw in training: {s.n_fault_missions} fault flights
-            (5 fault types × 12) and {s.n_healthy_missions} healthy flights flown in hotter weather than the training data.
-            Every number below is recomputed from the pipeline, not hand-entered.
+            Frozen test split (simulated dataset v{r.dataset_version}): {s.n_fault_missions} fault flights (5 types × 12, one severity
+            each) and {s.n_healthy_missions} healthy flights, generated from seeds disjoint from training and evaluated once.
+            Thresholds and diagnosis rules were fixed beforehand on a separate development split. All engines share identical
+            physics, and the physics twin matches the simulator exactly, so treat these as upper bounds, not real-engine performance.
           </div>
         </div>
       </div>
 
       <div className="grid g6">
-        <Kpi icon={Target} label="Detection rate" value={pct(s.overall_detection_rate)} note="faults caught after onset, before failure" color="var(--ok)" />
-        <Kpi icon={Brain} label="Diagnosis accuracy" value={pct(s.diagnosis_accuracy)} note="correct fault type at first alert" color="var(--ok)" />
-        <Kpi icon={Crosshair} label="Cylinder localisation" value={pct(s.cylinder_accuracy)} note="injector & misfire faults" color="var(--ok)" />
+        <Kpi icon={Target} label="Detection (ML)" value={`${s.detection.k}/${s.detection.n}`} note={`caught after onset, before failure · ${ci(s.detection)}`} color="var(--ok)" />
+        <Kpi icon={Brain} label="Diagnosis (rules)" value={`${s.diagnosis.k}/${s.diagnosis.n}`} note={`fault type at first alert · ${ci(s.diagnosis)}`} color="var(--ok)" />
+        <Kpi icon={Crosshair} label="Cylinder" value={`${s.cylinder.k}/${s.cylinder.n}`} note={`lean-cylinder & misfire flights · ${ci(s.cylinder)}`} color="var(--ok)" />
         <Kpi icon={Timer} label="Median warning" value={fmtDur(r.metrics.lead_time.median_s)} note={`before failure · p10–p90 ${fmtDur(r.metrics.lead_time.p10_s)}–${fmtDur(r.metrics.lead_time.p90_s)}`} />
-        <Kpi icon={ShieldCheck} label="False alarms" value={r.metrics.false_alarms_per_fh.toFixed(2)} note="per flight hour (healthy operation)" color="var(--ok)" />
+        <Kpi icon={ShieldCheck} label="False alarms (ML)" value={`${fa.events} event${fa.events === 1 ? '' : 's'}`} note={`in ${fa.healthy_hours.toFixed(0)} healthy flight-hours · 95% CI ${fa.ci95[0].toFixed(3)}–${fa.ci95[1].toFixed(3)} /FH`} color="var(--ok)" />
         <Kpi icon={Plane} label="Healthy hours tested" value={s.healthy_flight_hours.toFixed(0)} note="flight hours with no fault present" color="var(--text)" />
       </div>
 
@@ -100,34 +103,36 @@ export default function Validation({ results }) {
         <div className="panel">
           <div className="panel-title"><Layers size={15} /> Ablation: why an ensemble?</div>
           <table className="t">
-            <thead><tr><th>Detector</th><th style={{ textAlign: 'right' }}>Detection</th><th style={{ textAlign: 'right' }}>Median warning</th><th style={{ textAlign: 'right' }}>False alarms / FH</th></tr></thead>
+            <thead><tr><th>Detector</th><th style={{ textAlign: 'right' }}>Detection</th><th style={{ textAlign: 'right' }}>Median warning</th><th style={{ textAlign: 'right' }}>False-alarm events</th><th style={{ textAlign: 'right' }}>per FH (95% CI)</th></tr></thead>
             <tbody>
               {r.ablation.map((a) => (
                 <tr key={a.model} className={a === fused ? 'best' : ''}>
                   <td style={{ fontWeight: a === fused ? 700 : 400 }}>{a.model}</td>
                   <td className="num">{pct(a.detection_rate)}</td>
                   <td className="num">{fmtDur(a.median_lead_s)}</td>
-                  <td className="num" style={{ color: a.false_alarms_per_fh > 0.3 ? 'var(--crit)' : 'var(--ok)' }}>{a.false_alarms_per_fh.toFixed(2)}</td>
+                  <td className="num" style={{ color: a.false_alarm_events > 2 ? 'var(--crit)' : 'var(--ok)' }}>{a.false_alarm_events}</td>
+                  <td className="num">{a.false_alarms_per_fh.toFixed(3)} <span className="dim">({a.false_alarms_ci95[0].toFixed(2)}–{a.false_alarms_ci95[1].toFixed(2)})</span></td>
                 </tr>
               ))}
             </tbody>
           </table>
           <div className="note mt">
-            Each detector alone either misses faults (Isolation Forest: {pct(singles[0].detection_rate)}) or raises a false alarm
-            every 0.5–2 flight hours. Averaging their calibrated percentiles cancels uncorrelated noise:
-            the fused ensemble keeps 100% detection with <b>{(bestSingleFa / fused.false_alarms_per_fh).toFixed(0)}× fewer false alarms</b> than the best single model.
+            Over the same {fa.healthy_hours.toFixed(0)} healthy flight-hours, the single detectors raised {singleEvents.join(', ')} false-alarm
+            events (Isolation Forest, PCA, LSTM) and the Isolation Forest also missed faults ({pct(singles[0].detection_rate)} detected).
+            Averaging their calibrated percentiles cancels much of their uncorrelated noise: the fused ensemble raised <b>{fused.false_alarm_events}</b>.
+            With so few events the intervals are wide, so read this as a clear direction, not a precise ratio.
           </div>
         </div>
         <div className="panel">
-          <div className="panel-title"><BarChart3 size={15} /> False alarms per flight hour (log scale)</div>
+          <div className="panel-title"><BarChart3 size={15} /> False-alarm events per flight hour (log scale)</div>
           <div style={{ height: 250 }}>
             <ResponsiveContainer>
               <BarChart data={r.ablation} layout="vertical" margin={{ left: 30, right: 30 }}>
                 <CartesianGrid horizontal={false} />
-                <XAxis type="number" scale="log" domain={[0.01, 5]} ticks={[0.01, 0.1, 1, 5]} allowDataOverflow />
+                <XAxis type="number" scale="log" domain={[0.005, 2]} ticks={[0.01, 0.1, 1]} allowDataOverflow />
                 <YAxis type="category" dataKey="model" width={110} />
-                <Tooltip cursor={{ fill: 'rgba(255,255,255,.03)' }} content={<Tip fmt={(p) => <>{p.model}: <b>{p.false_alarms_per_fh.toFixed(3)}</b> / FH</>} />} />
-                <Bar isAnimationActive={false} baseValue={0.01} dataKey="false_alarms_per_fh" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: 'var(--text-2)', fontSize: 11, formatter: (v) => v.toFixed(2) }}>
+                <Tooltip cursor={{ fill: 'rgba(255,255,255,.03)' }} content={<Tip fmt={(p) => <>{p.model}: <b>{p.false_alarm_events}</b> events · {p.false_alarms_per_fh.toFixed(3)} / FH</>} />} />
+                <Bar isAnimationActive={false} baseValue={0.005} dataKey="false_alarms_per_fh" radius={[0, 4, 4, 0]} label={{ position: 'right', fill: 'var(--text-2)', fontSize: 11, formatter: (v) => v.toFixed(3) }}>
                   {r.ablation.map((a) => <Cell key={a.model} fill={a === fused ? 'var(--ok)' : 'var(--crit)'} fillOpacity={a === fused ? 1 : 0.7} />)}
                 </Bar>
               </BarChart>
@@ -159,8 +164,9 @@ export default function Validation({ results }) {
             ))}
           </div>
           <div className="note mt">
-            Diagnosis uses physics signatures (e.g. <i>misfire = one cylinder&apos;s EGT drops while vibration rises</i>), written from
-            engine physics, not fitted to the test faults. So this matrix is honest held-out accuracy.
+            Diagnosis uses physics signatures (e.g. <i>misfire = one cylinder&apos;s EGT drops while vibration rises</i>). The rules were
+            developed on an earlier dataset, then frozen and checked on a separate development split before this test split was evaluated.
+            The fault cylinder is always 1 (lean) or 2 (misfire) in this dataset.
           </div>
         </div>
         <div className="panel">
@@ -180,8 +186,8 @@ export default function Validation({ results }) {
             </ResponsiveContainer>
           </div>
           <div className="dim" style={{ fontSize: 11.5 }}>
-            All five types detected 100%. Fast faults (misfire reaches functional failure ~100 s after onset) leave little
-            warning time; slow faults (lubrication) are flagged 10+ minutes ahead.
+            Fast faults (misfire reaches functional failure ~100 s after onset) leave little warning time; slow faults
+            (lubrication) are flagged many minutes ahead. Warning time is measured to the simulator&apos;s failure threshold.
           </div>
         </div>
       </div>

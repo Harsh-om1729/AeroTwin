@@ -21,8 +21,8 @@ export default function Fleet({ fleet, results, onOpen }) {
         <div>
           <h1 className="page-title">Fleet Command</h1>
           <div className="page-sub">
-            Health of every MALE-UAV aero-piston engine after its last flight. Each card is a real held-out test mission
-            processed end-to-end by the digital twin. Click an aircraft to replay its flight live.
+            Health of each MALE-UAV aero-piston engine after its last flight. Each card is a simulated test flight, never used in
+            training, processed end-to-end by the digital twin. Click an aircraft to replay its flight.
           </div>
         </div>
         <span className="badge b-info"><span className="live-dot" />Twin online</span>
@@ -33,7 +33,7 @@ export default function Fleet({ fleet, results, onOpen }) {
         <Kpi label="Go" value={count('GO')} note="cleared for next mission" icon={CircleCheck} color="var(--ok)" glow="rgba(34,197,94,.14)" />
         <Kpi label="Caution" value={count('CAUTION')} note="inspect soon" icon={TriangleAlert} color="var(--warn)" glow="rgba(245,158,11,.14)" />
         <Kpi label="No-Go" value={count('NO-GO')} note="grounded for maintenance" icon={CircleX} color="var(--crit)" glow="rgba(239,68,68,.16)" />
-        <Kpi label="Detection rate" value={s ? pct(s.overall_detection_rate) : '…'} note={s ? `${s.n_fault_missions} unseen fault flights` : 'computing…'} icon={Target} color="var(--accent)" />
+        <Kpi label="Faults detected" value={s ? `${s.detection.k}/${s.detection.n}` : '…'} note={s ? `simulated test flights · 95% CI ≥ ${pct(s.detection.ci95[0])}` : 'computing…'} icon={Target} color="var(--accent)" />
       </div>
 
       <div className="grid g4 mt">

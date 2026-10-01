@@ -4,7 +4,7 @@
     "PCA",
     "LSTM"
   ],
-  "p_calibrated": 4.305260410899892,
+  "p_calibrated": 4.254341967185644,
   "window_size": 60,
   "stride": 10
 }

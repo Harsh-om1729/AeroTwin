@@ -22,6 +22,10 @@ def load_config():
         return yaml.safe_load(f)
 
 def main():
+    # Reproducible training: same data + same seed -> same models
+    np.random.seed(0)
+    import torch
+    torch.manual_seed(0)
     data_dir = Path(__file__).parent.parent.parent / "data"
     cfg = load_config()
     

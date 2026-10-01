@@ -9,7 +9,7 @@ import Architecture from './pages/Architecture';
 
 const PAGES = [
   { id: 'fleet', label: 'Fleet Command', icon: LayoutGrid },
-  { id: 'twin', label: 'Live Twin', icon: Activity },
+  { id: 'twin', label: 'Twin Replay', icon: Activity },
   { id: 'lab', label: 'Fault Injection Lab', icon: FlaskConical },
   { id: 'validation', label: 'Model Validation', icon: BarChart3 },
   { id: 'architecture', label: 'How it works', icon: Network },
