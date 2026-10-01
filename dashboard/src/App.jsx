@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Activity, BarChart3, FlaskConical, LayoutGrid, LoaderCircle, Network, Plane } from 'lucide-react';
+import { Activity, BarChart3, FlaskConical, LayoutGrid, Network, Plane } from 'lucide-react';
 import { api } from './api';
 import Fleet from './pages/Fleet';
 import LiveTwin from './pages/LiveTwin';
 import FaultLab from './pages/FaultLab';
 import Validation from './pages/Validation';
 import Architecture from './pages/Architecture';
+import Background from './components/Background';
+import BootScreen from './components/BootScreen';
 
 const PAGES = [
   { id: 'fleet', label: 'Fleet Command', icon: LayoutGrid },
@@ -27,6 +29,20 @@ export default function App() {
   const [results, setResults] = useState(null);
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
+  // Show the start-up sequence once per browser session (demo polish); later
+  // reloads go straight to the page.
+  const [booted, setBooted] = useState(() => {
+    try { return sessionStorage.getItem('aerotwin-booted') === '1'; } catch { return true; }
+  });
+
+  useEffect(() => {
+    if (booted) return undefined;
+    const id = setTimeout(() => {
+      setBooted(true);
+      try { sessionStorage.setItem('aerotwin-booted', '1'); } catch { /* storage unavailable */ }
+    }, 2400);
+    return () => clearTimeout(id);
+  }, [booted]);
 
   useEffect(() => {
     api.fleet().then(setFleet).catch((e) => setError(e.message));
@@ -54,8 +70,8 @@ export default function App() {
         </div>
       </div>
     );
-  } else if (!fleet) {
-    content = <div className="loading"><div><LoaderCircle className="spin" size={28} /><div style={{ marginTop: 10 }}>Starting digital twin…</div></div></div>;
+  } else if (!fleet || !booted) {
+    content = <BootScreen />;
   } else if (page === 'fleet') {
     content = <Fleet fleet={fleet} results={results} onOpen={(id) => go('twin', id)} />;
   } else if (page === 'twin') {
@@ -69,6 +85,8 @@ export default function App() {
   }
 
   return (
+    <>
+    <Background />
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
@@ -88,7 +106,8 @@ export default function App() {
           <div style={{ marginTop: 6 }}>Predictive health monitoring for MALE-UAV aero-piston engines (Rotax 912 class).</div>
         </div>
       </aside>
-      <main className="main">{content}</main>
+      <main className="main"><div key={`${page}/${sel || ''}/${fleet && booted ? 1 : 0}`} className="page-anim">{content}</div></main>
     </div>
+    </>
   );
 }

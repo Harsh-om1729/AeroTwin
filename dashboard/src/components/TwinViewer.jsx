@@ -82,6 +82,9 @@ function buildEvents(tl) {
   return ev;
 }
 
+const TOAST_KINDS = new Set(['twin', 'crit', 'diag']);
+const TOAST_TITLE = { twin: 'Bayesian twin', crit: 'Alert', diag: 'Signature check' };
+
 const EV_ICON = {
   info: <Clock size={14} color="var(--text-3)" />,
   warn: <TriangleAlert size={14} color="var(--warn)" />,
@@ -176,6 +179,27 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
   const maxScore = diag ? Math.max(...Object.values(diag.scores), 1) : 1;
   const sig = SIGNALS[signal];
   const evNow = events.filter((e) => e.i <= idx).reverse();
+  // Pop-up notifications: derived from playback position, so each event
+  // shows for ~4 s of wall time while the replay runs past it.
+  const toastSpan = SPEEDS[speed].wps * 4;
+  const toasts = running ? events.filter((e) => TOAST_KINDS.has(e.kind) && e.i <= idx && e.i > idx - toastSpan).slice(-3) : [];
+
+  // Keyboard: space play/pause, arrows step (shift = 10), Home/End jump
+  useEffect(() => {
+    const onKey = (e) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const step = e.shiftKey ? 10 : 1;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (idx >= n - 1) { setIdx(0); setPlaying(true); } else setPlaying(!running);
+      } else if (e.key === 'ArrowRight') { setPlaying(false); setIdx(Math.min(n - 1, idx + step)); }
+      else if (e.key === 'ArrowLeft') { setPlaying(false); setIdx(Math.max(0, idx - step)); }
+      else if (e.key === 'Home') { setIdx(0); }
+      else if (e.key === 'End') { setPlaying(false); setIdx(n - 1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [idx, n, running]);
 
   const marks = [];
   if (showTruth && truth?.fault_start_t != null) {
@@ -193,6 +217,14 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
 
   return (
     <div>
+      <div className="toasts" aria-live="polite">
+        {toasts.map((e) => (
+          <div key={`${e.i}-${e.text}`} className={`toast ${e.kind}`}>
+            {EV_ICON[e.kind]}
+            <div><b>{TOAST_TITLE[e.kind]}</b>{e.text.replace(/^(Bayesian twin|Diagnosis): /, '')}<br /><time>T+{clock(e.t)}</time></div>
+          </div>
+        ))}
+      </div>
       {/* playback */}
       <div className="panel playbar">
         <button className="btn icon primary" onClick={() => { if (idx >= n - 1) { setIdx(0); setPlaying(true); } else setPlaying(!running); }} title={running ? 'Pause' : 'Play'}>
@@ -200,8 +232,9 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
         </button>
         <button className="btn icon" onClick={() => { setIdx(0); setPlaying(true); }} title="Restart"><RotateCcw size={16} /></button>
         <div>
-          <div className="clock">T+{clock(cur.t)}</div>
+          <div className="clock">T+{clock(cur.t)}<span className={`rec-chip ${running ? '' : 'paused'}`}><i />{running ? 'REPLAY' : 'PAUSED'}</span></div>
           <div className="dim" style={{ fontSize: 11 }}>{title}{subtitle ? ` · ${subtitle}` : ''}</div>
+          <div className="kbd-hint" style={{ marginTop: 3 }}><kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> step · <kbd>⇧</kbd> ×10</div>
         </div>
         <div className="scrub">
           <input type="range" min={0} max={n - 1} value={idx} onChange={(e) => { setIdx(+e.target.value); setPlaying(false); }} />
@@ -232,6 +265,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
       {/* top row */}
       <div className="twin-top mt">
         <div className="panel">
+          {running && <div className="scan" />}
           <div className="panel-title"><Cpu size={15} /> Engine twin <span className="right badge b-mute">{cur.phase || '—'}</span></div>
           <EngineDiagram row={cur} flaggedCyl={flagCyl} flaggedSystem={flagFault} />
         </div>

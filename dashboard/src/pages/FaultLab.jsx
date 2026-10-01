@@ -95,7 +95,7 @@ export default function FaultLab() {
 
       <div className="panel">
         <div className="field-label">1 · Choose a fault to inject</div>
-        <div className="grid g6">
+        <div className="grid g6 stagger">
           {FAULTS.map((f) => (
             <div key={f.id || 'none'} className={`fault-opt ${fault === f.id ? 'on' : ''}`} onClick={() => setFault(f.id)}>
               <f.icon size={20} color={fault === f.id ? 'var(--accent)' : 'var(--text-2)'} />

@@ -88,7 +88,7 @@ export default function Validation({ results }) {
         </div>
       </div>
 
-      <div className="grid g6">
+      <div className="grid g6 stagger">
         <Kpi icon={Target} label="Detection (ML)" value={`${s.detection.k}/${s.detection.n}`} note={`caught after onset, before failure · ${ci(s.detection)}`} color="var(--ok)" />
         <Kpi icon={Brain} label="Diagnosis (rules)" value={`${s.diagnosis.k}/${s.diagnosis.n}`} note={`fault type at first alert · ${ci(s.diagnosis)}`} color="var(--ok)" />
         <Kpi icon={Crosshair} label="Cylinder" value={`${s.cylinder.k}/${s.cylinder.n}`} note={`lean-cylinder & misfire flights · ${ci(s.cylinder)}`} color="var(--ok)" />

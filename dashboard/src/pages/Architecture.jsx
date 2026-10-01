@@ -44,7 +44,7 @@ export default function Architecture({ meta }) {
 
       <div className="panel">
         <div className="panel-title"><Workflow size={15} /> Processing pipeline</div>
-        <div className="flow">
+        <div className="flow stagger">
           {STEPS.map((s, i) => (
             <Fragment key={s.n}>
               <div className="flow-step">

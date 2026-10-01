@@ -37,7 +37,7 @@ export default function TwinValidation({ twin }) {
         <span className="right dim" style={{ fontSize: 11 }}>same 120 test flights · filter tuned only on separate simulated flights</span>
       </div>
 
-      <div className="grid g5" style={{ marginBottom: 16 }}>
+      <div className="grid g5 stagger" style={{ marginBottom: 16 }}>
         <Stat icon={Timer} label="Median detection delay" twin={fmtDur(twin.median_delay_s)} base={fmtDur(twin.ml_median_delay_s)} baseLabel="ML ensemble" />
         <Stat icon={Hourglass} label="RUL median error" twin={fmtDur(twin.rul_median_abs_err_s.twin)} base={fmtDur(twin.rul_median_abs_err_s.linear)} baseLabel="HI linear trend*" />
         <Stat icon={Target} label={`RUL within ±${twin.alpha_lambda.alpha * 100}% (α-λ)`} twin={pct(twin.alpha_lambda.twin)} base={pct(twin.alpha_lambda.linear, 1)} baseLabel="linear trend" />
