@@ -1,0 +1,10 @@
+data/
+*.pkl
+*.pt
+*.h5
+*.parquet
+__pycache__/
+*.pyc
+cache/
+dashboard/dist/
+.pytest_cache/

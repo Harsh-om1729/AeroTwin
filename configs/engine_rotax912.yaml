@@ -1,0 +1,28 @@
+engine: rotax_912_class
+variant: "912 S/ULS"
+cylinders: 4
+rpm:
+  max_takeoff: 5800   # max. 5 min
+  max_continuous: 5500
+  idle: 1400          # min.
+  source: "Rotax 912 Series Operator's Manual, Ed.4/Rev.0, Nov 2016, Ch.2.2"
+oil_press:
+  min: 0.8   # bar, below 3500 rpm
+  max: 7.0   # bar
+  normal: [2.0, 5.0]  # bar, above 3500 rpm
+  unit: bar
+  source: "Rotax 912 Series Operator's Manual, Ed.4/Rev.0, Nov 2016, Ch.2.2"
+oil_temp:
+  min: 50    # C
+  max: 130   # C (912 S/ULS; 912 A/F/UL is 140 C)
+  normal: [90, 110]  # C
+  unit: C
+  source: "Rotax 912 Series Operator's Manual, Ed.4/Rev.0, Nov 2016, Ch.2.2"
+cht:
+  max: 135   # C (912 S/ULS; 912 A/F/UL is 150 C)
+  unit: C
+  source: "Rotax 912 Series Operator's Manual, Ed.4/Rev.0, Nov 2016, Ch.2.2"
+egt:
+  max: 880   # C
+  unit: C
+  source: "Rotax 912 Series Operator's Manual, Ed.4/Rev.0, Nov 2016, Ch.2.2"

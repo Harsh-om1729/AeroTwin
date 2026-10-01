@@ -1,0 +1,10 @@
+{
+  "model_names": [
+    "IF",
+    "PCA",
+    "LSTM"
+  ],
+  "p_calibrated": 4.305260410899892,
+  "window_size": 60,
+  "stride": 10
+}
