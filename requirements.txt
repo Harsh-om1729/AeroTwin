@@ -12,3 +12,4 @@ pydantic
 httpx
 pytest
 anthropic>=1.11
+google-genai>=1.0

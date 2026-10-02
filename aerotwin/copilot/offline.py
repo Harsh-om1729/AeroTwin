@@ -58,7 +58,7 @@ def _fleet(ev):
              f"{sum(r['decision'] == 'GO' for r in rows)} are cleared (GO). Highest risk first:", ""]
     for r in rows:
         fault = r["most_likely_fault"] or r["signature_check_fault"]
-        lines.append(f"- **{r['aircraft_id']}** ({r['callsign']}): **{r['decision']}**, Health Index {r['health_index']}"
+        lines.append(f"- **{r['aircraft_id']}** ({r['callsign']}): **{r['decision']}**, Health Index {r['ml_health_index_0_to_100']}"
                      + (f", most likely fault **{fault}**" if fault else ", no fault signature")
                      + (f", twin detection {r['first_twin_detection']}" if r["first_twin_detection"] else ""))
     lines += ["", "Ask about any aircraft (for example \"Why is AT-104 grounded?\") for the full evidence."]
@@ -91,7 +91,7 @@ def _status(ev, a, t):
         lines.append(f"- The ML ensemble's alert is driven mainly by **{top['sensor']}** "
                      f"({top['share_of_anomaly_evidence_pct']:.0f}% of the anomaly evidence)")
     if not tw.get("most_likely_fault") and not s["signature_check"]:
-        lines += ["", f"No fault signature: the Bayesian twin gives P(component degraded) = {_pct(tw['p_component_degraded'])}, "
+        lines += ["", f"No fault signature: the Bayesian twin gives P(component degraded) = {_pct(tw['probability_a_component_is_degraded'])}, "
                       f"and the ML ensemble's anomaly percentile is {s['ml_ensemble']['fused_anomaly_percentile']:.0f}."]
     if s["signature_check"]:
         lines += ["", f"**Recommended action:** {s['signature_check']['action']}"]
@@ -131,7 +131,7 @@ def _rul(ev, a, t):
     tw = s["bayesian_twin"]
     if "remaining_useful_life_min" not in tw:
         return (f"**No remaining-useful-life estimate for {s['aircraft_id']}** at {s['time']}: the Bayesian twin does "
-                f"not see a degrading component (P = {_pct(tw['p_component_degraded'])}), so there is nothing to "
+                f"not see a degrading component (P = {_pct(tw['probability_a_component_is_degraded'])}), so there is nothing to "
                 f"extrapolate. Decision: **{s['decision']}**."), ["get_aircraft_status"]
     rul = tw["remaining_useful_life_min"]
     head = (f"**{s['aircraft_id']} has already reached the failure threshold** at {s['time']}."
@@ -141,7 +141,7 @@ def _rul(ev, a, t):
     lines = [head, "",
              f"- Component: {tw['most_likely_fault']}, health {tw['component_health']['median']} "
              f"(1 = as new), falling about {tw.get('degradation_rate_pct_per_min', '?')}% per minute",
-             f"- Probability of failure within the next 60-minute mission: {_pct(tw['p_failure_within_next_60min_mission'])}",
+             f"- Probability of failure within the next 60-minute mission: {_pct(tw['probability_of_failure_within_next_60min_mission'])}",
              "- RUL is measured to the simulator's functional-failure threshold; under model mismatch the intervals "
              "become over-confident (see the robustness study)."]
     return "\n".join(lines), ["get_aircraft_status"]

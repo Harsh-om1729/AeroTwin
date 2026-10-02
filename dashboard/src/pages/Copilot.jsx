@@ -77,7 +77,9 @@ export default function Copilot({ fleet, selected }) {
         </div>
         <div className="copilot-mode">
           {online ? (
-            <span className="badge b-info"><Cloud size={12} /> Claude · {status.model}</span>
+            <span className="badge b-info" title={status.backup?.length ? `Backup: ${status.backup.join(', ')}, then offline engine` : 'Backup: offline engine'}>
+              <Cloud size={12} /> {status.provider} · {status.model}
+            </span>
           ) : (
             <span className="badge b-mute"><WifiOff size={12} /> Offline engine</span>
           )}
@@ -89,8 +91,8 @@ export default function Copilot({ fleet, selected }) {
 
       {status && !status.llm_ready && !offline && (
         <div className="note" style={{ marginBottom: 14 }}>
-          Claude is not configured: {status.reason}. The copilot answers with its offline engine from the same evidence.
-          To enable Claude, copy <span className="mono">.env.example</span> to <span className="mono">.env</span>, add an API key and restart.
+          No AI provider is configured: {status.reason}. The copilot answers with its offline engine from the same evidence.
+          To enable Gemini or Claude, copy <span className="mono">.env.example</span> to <span className="mono">.env</span>, add a key and restart.
         </div>
       )}
 
@@ -128,8 +130,10 @@ export default function Copilot({ fleet, selected }) {
                   {m.role === 'user' ? <div>{m.content}{m.aircraft ? <span className="dim"> · {m.aircraft}</span> : null}</div> : <Markdown text={m.content} />}
                   {m.meta && (
                     <div className="msg-meta">
-                      <span className={`badge ${m.meta.mode === 'claude' ? 'b-info' : 'b-mute'}`}>
-                        {m.meta.mode === 'claude' ? <><Cloud size={11} /> {m.meta.model}</> : <><WifiOff size={11} /> Offline engine</>}
+                      <span className={`badge ${m.meta.mode !== 'offline' ? 'b-info' : 'b-mute'}`}>
+                        {m.meta.mode !== 'offline'
+                          ? <><Cloud size={11} /> {m.meta.provider || m.meta.mode} · {m.meta.model}</>
+                          : <><WifiOff size={11} /> Offline engine</>}
                       </span>
                       {m.meta.tools_used?.length > 0 && (
                         <span className="msg-tools"><Database size={11} /> {[...new Set(m.meta.tools_used.map((t) => TOOL_LABEL[t.name] || t.name))].join(' · ')}</span>
@@ -139,7 +143,10 @@ export default function Copilot({ fleet, selected }) {
                     </div>
                   )}
                   {status?.llm_ready && m.meta?.mode === 'offline' && m.meta.fallback_kind !== 'forced' && m.meta.fallback_reason && (
-                    <div className="msg-fallback">Claude unavailable: {m.meta.fallback_reason}. Answered by the offline engine from the same digital-twin data.</div>
+                    <div className="msg-fallback">AI unavailable ({m.meta.fallback_reason}). Answered by the offline engine from the same digital-twin data.</div>
+                  )}
+                  {m.meta && m.meta.mode !== 'offline' && m.meta.fallback_reason && (
+                    <div className="msg-fallback">Backup used ({m.meta.fallback_reason}). Answered by {m.meta.provider}.</div>
                   )}
                 </div>
               </div>

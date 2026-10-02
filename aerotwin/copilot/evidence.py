@@ -119,7 +119,7 @@ class Evidence:
                 "aircraft_id": a,
                 "callsign": self.fleet[a].get("callsign"),
                 "decision": last["advisor"]["decision"],
-                "health_index": round(sorted(r["hi"] for r in tl[-5:])[2], 1),
+                "ml_health_index_0_to_100": round(sorted(r["hi"] for r in tl[-5:])[2], 1),
                 "flight_time": clock(last["t"]),
                 "most_likely_fault": fault_name(tw["map"]["fault"], tw["map"]["cylinder"]) if tw["p_degraded"] > 0.95
                 else None,
@@ -127,7 +127,7 @@ class Evidence:
                 "first_ml_alert": clock(first_alert) if first_alert is not None else None,
                 "first_twin_detection": clock(twin_det["t"]) if twin_det else None,
             })
-        rows.sort(key=lambda r: (DECISION_RANK.get(r["decision"], 3), r["health_index"]))
+        rows.sort(key=lambda r: (DECISION_RANK.get(r["decision"], 3), r["ml_health_index_0_to_100"]))
         return {"aircraft": rows, "note": "Each aircraft's last flight is a simulated test flight."}
 
     def aircraft_status(self, aircraft_id, t=None):
@@ -153,12 +153,12 @@ class Evidence:
         }
 
         twin = {
-            "p_component_degraded": round(tw["p_degraded"], 4),
+            "probability_a_component_is_degraded": round(tw["p_degraded"], 4),
             "top_hypotheses": [
                 {"hypothesis": hypothesis_name(k), "probability": round(v, 4)}
                 for k, v in sorted(tw["posterior"].items(), key=lambda kv: -kv[1])[:3]
             ],
-            "p_failure_within_next_60min_mission": round(tw["p_fail_horizon"], 4),
+            "probability_of_failure_within_next_60min_mission": round(tw["p_fail_horizon"], 4),
         }
         if tw["p_degraded"] > 0.95:
             twin["most_likely_fault"] = fault_name(tw["map"]["fault"], tw["map"]["cylinder"])
@@ -205,8 +205,8 @@ class Evidence:
             "flight_phase": r.get("phase"),
             "decision": r["advisor"]["decision"],
             "decision_reasons": r["advisor"]["reasons"],
-            "health_index": {"smoothed": round(r["hi_smooth"], 1), "scale": "0 failed - 100 as new"},
-            "ml_ensemble": {"alert": r["alert"], "alert_latched": r["alert_latched"], "degrading": r["degrading"],
+            "ml_ensemble": {"health_index_0_to_100_smoothed": round(r["hi_smooth"], 1), "alert": r["alert"],
+                            "alert_latched": r["alert_latched"], "degrading": r["degrading"],
                             "fused_anomaly_percentile": r["fused"]},
             "bayesian_twin": twin,
             "signature_check": signature,
@@ -322,17 +322,19 @@ class Evidence:
 TOOL_SPECS = [
     {
         "name": "get_fleet_overview",
-        "description": "List every aircraft in the fleet with its Go/No-Go decision, Health Index, most likely fault and "
-                       "first detection times, sorted from highest to lowest risk. Use for fleet-wide or prioritisation questions.",
+        "description": "List every aircraft in the fleet with its Go/No-Go decision, the ML ensemble's Health Index (0-100), the "
+                       "Bayesian twin's most likely fault, the signature-check fault and first detection times, sorted from "
+                       "highest to lowest risk. Use for fleet-wide or prioritisation questions.",
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "get_aircraft_status",
         "description": "Full digital-twin evidence for one aircraft at one moment of its last flight: Go/No-Go decision and "
-                       "reasons, Health Index, ML-ensemble alert state, Bayesian twin fault probabilities, component health "
-                       "and remaining useful life (with 90% intervals), rule-based signature check, explainable-AI sensor "
-                       "attribution and key sensor readings vs the healthy twin and engine limits. Omit t_seconds for the end "
-                       "of the flight.",
+                       "reasons; ml_ensemble (Health Index 0-100, alert state, anomaly percentile); bayesian_twin "
+                       "(probability that a component is degraded, probability of failure within the next 60-minute mission, "
+                       "component health on a 0-1 scale and remaining useful life, with 90% intervals); the rule-based "
+                       "signature check; explainable-AI sensor attribution; and key sensor readings vs the healthy twin and "
+                       "engine limits. Each value belongs to the section it appears in. Omit t_seconds for the end of the flight.",
         "input_schema": {
             "type": "object",
             "properties": {

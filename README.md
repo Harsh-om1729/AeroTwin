@@ -53,20 +53,22 @@ first?", "Why is AT-104 grounded?", "What should the technician check on AT-107?
   read-only tools: fleet overview, aircraft status at any flight time, event timeline, engine limits, maintenance
   actions, validation results. The system prompt requires every number to come from a tool, says "not in the data"
   otherwise, and forbids overriding or softening a Go/No-Go decision.
-* **Claude path** (`llm.py`): a tool-use loop on `claude-opus-5-5` (change with `COPILOT_MODEL`), effort `medium`,
-  server-side refusal fallbacks enabled, at most 6 tool rounds, 30 s per request and 75 s in total.
-* **Always answers** (`service.py`, `offline.py`). If Claude cannot answer (no key, credit exhausted, invalid key,
+* **Two AI providers with automatic backup** (`service.py`): Google **Gemini** (`gemini_llm.py`, models tried in order `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-3.8-flash`;
+  change with `COPILOT_MODEL_GEMINI`) is tried first, then **Claude** (`llm.py`, `claude-opus-5-5`, change with
+  `COPILOT_MODEL`; effort `medium`, server-side refusal fallbacks), then the offline engine. Set `COPILOT_PROVIDER=claude`
+  to try Claude first. Both use the same tools, prompt and guardrails, at most 6 tool rounds, 30 s per request.
+* **Always answers** (`service.py`, `offline.py`). If no AI provider can answer (no key, credit exhausted, invalid key,
   rate limit, no internet, timeout, refusal, empty reply), the offline engine answers the same question from the
   *same* evidence functions, and the UI shows which engine answered and why. Verified against the real API with an
   invalid key: a 401 fell back to a full offline answer in 0.7 s.
 * **Key safety:** the key lives only in a git-ignored `.env` (see `.env.example`), is never sent to the browser and
   never logged.
 
-Enable Claude (optional; billed per use, separately from a claude.ai subscription):
+Enable an AI provider (optional):
 
 ```bash
-cp .env.example .env        # then put your key after ANTHROPIC_API_KEY=
-pip install anthropic       # already in requirements.txt
+cp .env.example .env        # then add GEMINI_API_KEY= and/or ANTHROPIC_API_KEY=
+pip install google-genai anthropic   # both already in requirements.txt
 ./run.sh
 ```
 

@@ -8,7 +8,9 @@ import anthropic
 import httpx2
 import pytest
 
-from aerotwin.copilot import llm, service
+from google.genai import errors as genai_errors
+
+from aerotwin.copilot import gemini_llm, llm, service
 from aerotwin.copilot.evidence import Evidence, run_tool
 from aerotwin.copilot.offline import answer_offline, detect_intent, extract_aircraft
 from aerotwin.inference.replay import compute_mission_timeline, get_bundle, load_mission_df
@@ -210,8 +212,9 @@ def test_rejected_refusal_fallbacks_retry_once_without_them(ev):
 def test_no_key_means_offline_without_any_network_call(ev, monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setattr(llm, "credentials_configured", lambda: False)
-    monkeypatch.setattr(service, "credentials_configured", lambda: False)
+    monkeypatch.setattr(gemini_llm, "credentials_configured", lambda: False)
     out = service.answer(ev, "Why is AT-104 grounded?", "AT-104")
     assert out["mode"] == "offline" and out["fallback_kind"] == "auth"
     assert service.status()["llm_ready"] is False
@@ -235,3 +238,133 @@ def test_env_file_loader(tmp_path, monkeypatch):
     llm.load_env_file(tmp_path / ".env")
     import os
     assert os.environ["COPILOT_TEST_KEY"] == "abc"
+
+
+# ------------------------------------------------------------ Gemini path (fake client) + provider chain
+def _gresp(parts, finish="STOP"):
+    return SimpleNamespace(
+        usage_metadata=SimpleNamespace(prompt_token_count=50, candidates_token_count=10),
+        candidates=[SimpleNamespace(finish_reason=finish, content=SimpleNamespace(parts=parts))])
+
+
+def _gpart(text=None, call=None, thought=None):
+    return SimpleNamespace(text=text, thought=thought,
+                           function_call=SimpleNamespace(name=call[0], args=call[1]) if call else None)
+
+
+class FakeGemini:
+    """Mimics google-genai: client.chats.create(...).send_message(...)."""
+
+    def __init__(self, script):
+        self.script, self.sent, self.created = list(script), [], []
+        self.chats = SimpleNamespace(create=self._create)
+
+    def _create(self, model, config, history):
+        self.created.append({"model": model, "config": config, "history": history})
+        return SimpleNamespace(send_message=self._send)
+
+    def _send(self, msg):
+        self.sent.append(msg)
+        item = self.script.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+
+@pytest.fixture(autouse=True)
+def _single_gemini_model(monkeypatch):
+    """Most tests use one Gemini model so a scripted failure is final; model fallback is tested separately."""
+    monkeypatch.setenv("COPILOT_MODEL_GEMINI", "gemini-test-model")
+
+
+def test_gemini_tool_loop_grounds_answer(ev):
+    g = FakeGemini([
+        _gresp([_gpart(call=("get_aircraft_status", {"aircraft_id": "AT-104"}))]),
+        _gresp([_gpart(text="thinking...", thought=True), _gpart(text="**AT-104 is NO-GO** (lubrication).")]),
+    ])
+    out = service.answer(ev, "Why is AT-104 grounded?", "AT-104", gemini_client=g)
+    assert out["mode"] == "gemini" and out["provider"] == "Gemini" and out["fallback_reason"] is None
+    assert out["answer"] == "**AT-104 is NO-GO** (lubrication)."  # thought part excluded
+    assert out["tools_used"][0]["name"] == "get_aircraft_status"
+    assert out["usage"] == {"input_tokens": 100, "output_tokens": 20}
+    cfg = g.created[0]["config"]
+    assert cfg.system_instruction == llm.SYSTEM_PROMPT and len(cfg.tools[0].function_declarations) == 6
+    assert "AT-104" in g.sent[0]  # first message: context + question
+    fr = g.sent[1][0].function_response  # second message: the tool result, sent back as a function response
+    assert fr.name == "get_aircraft_status" and fr.response["result"]["decision"] == "NO-GO"
+
+
+@pytest.mark.parametrize("error, kind", [
+    (genai_errors.ClientError(400, {"error": {"code": 400, "message": "API key not valid.", "status": "INVALID_ARGUMENT",
+                                              "details": [{"reason": "API_KEY_INVALID"}]}}), "auth"),
+    (genai_errors.ClientError(403, {"error": {"code": 403, "message": "denied", "status": "PERMISSION_DENIED"}}), "permission"),
+    (genai_errors.ClientError(404, {"error": {"code": 404, "message": "model not found", "status": "NOT_FOUND"}}), "model"),
+    (genai_errors.ClientError(429, {"error": {"code": 429, "message": "Resource exhausted", "status": "RESOURCE_EXHAUSTED"}}), "rate_limit"),
+    (genai_errors.ServerError(503, {"error": {"code": 503, "message": "overloaded", "status": "UNAVAILABLE"}}), "server"),
+    (TimeoutError("timed out"), "timeout"),
+])
+def test_gemini_failures_fall_back_to_offline(ev, error, kind):
+    out = service.answer(ev, "Why is AT-104 grounded?", "AT-104", gemini_client=FakeGemini([error]))
+    assert out["mode"] == "offline" and out["fallback_kind"] == kind and out["fallback_reason"].startswith("Gemini:")
+    assert "NO-GO" in out["answer"]
+
+
+def test_gemini_safety_block_and_empty_answer_fall_back(ev):
+    out = service.answer(ev, "q AT-104", "AT-104", gemini_client=FakeGemini([_gresp([], finish="SAFETY")]))
+    assert out["mode"] == "offline" and out["fallback_kind"] == "refusal"
+    out = service.answer(ev, "q AT-104", "AT-104", gemini_client=FakeGemini([_gresp([_gpart(text="")])]))
+    assert out["mode"] == "offline" and out["fallback_kind"] == "empty"
+
+
+def test_gemini_failure_falls_back_to_claude_before_offline(ev):
+    g = FakeGemini([genai_errors.ClientError(429, {"error": {"code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED"}})])
+    c = FakeClient([_resp("end_turn", [SimpleNamespace(type="text", text="**AT-104 is NO-GO** (from Claude).")])])
+    out = service.answer(ev, "Why is AT-104 grounded?", "AT-104", client=c, gemini_client=g)
+    assert out["mode"] == "claude" and "from Claude" in out["answer"]
+    assert out["fallback_reason"].startswith("Gemini: Quota or rate limit reached")
+
+
+def test_provider_order_and_status(monkeypatch):
+    monkeypatch.setattr(gemini_llm, "sdk_installed", lambda: True)
+    monkeypatch.setattr(gemini_llm, "credentials_configured", lambda: True)
+    monkeypatch.setattr(llm, "sdk_installed", lambda: True)
+    monkeypatch.setattr(llm, "credentials_configured", lambda: True)
+    monkeypatch.delenv("COPILOT_PROVIDER", raising=False)
+    st = service.status()
+    assert st["llm_ready"] and st["provider"] == "Gemini" and st["backup"] == ["Claude"]
+    monkeypatch.setenv("COPILOT_PROVIDER", "claude")
+    assert service.status()["provider"] == "Claude"
+    monkeypatch.setattr(gemini_llm, "credentials_configured", lambda: False)
+    monkeypatch.setattr(llm, "credentials_configured", lambda: False)
+    st = service.status()
+    assert not st["llm_ready"] and st["provider"] is None and "API key" in st["reason"]
+
+
+def test_gemini_overloaded_model_falls_through_to_next_model(ev, monkeypatch):
+    monkeypatch.setenv("COPILOT_MODEL_GEMINI", "model-a, model-b")
+    busy = genai_errors.ServerError(503, {"error": {"code": 503, "message": "high demand", "status": "UNAVAILABLE"}})
+    g = FakeGemini([busy, _gresp([_gpart(text="**AT-104 is NO-GO**")])])
+    out = service.answer(ev, "Why is AT-104 grounded?", "AT-104", gemini_client=g)
+    assert out["mode"] == "gemini" and out["model"] == "model-b"
+    assert [c["model"] for c in g.created] == ["model-a", "model-b"]
+    assert g.created[1]["history"] == []  # second model starts clean
+
+
+def test_gemini_bad_key_does_not_try_other_models(ev, monkeypatch):
+    monkeypatch.setenv("COPILOT_MODEL_GEMINI", "model-a, model-b")
+    bad = genai_errors.ClientError(400, {"error": {"code": 400, "message": "API key not valid.", "status": "INVALID_ARGUMENT"}})
+    g = FakeGemini([bad])
+    out = service.answer(ev, "Why is AT-104 grounded?", "AT-104", gemini_client=g)
+    assert out["mode"] == "offline" and out["fallback_kind"] == "auth" and len(g.created) == 1
+
+
+def test_gemini_all_models_overloaded_reports_each(ev, monkeypatch):
+    monkeypatch.setenv("COPILOT_MODEL_GEMINI", "model-a,model-b")
+    busy = lambda: genai_errors.ServerError(503, {"error": {"code": 503, "message": "x", "status": "UNAVAILABLE"}})
+    out = service.answer(ev, "Why is AT-104 grounded?", "AT-104", gemini_client=FakeGemini([busy(), busy()]))
+    assert out["mode"] == "offline" and "model-a" in out["fallback_reason"] and "model-b" in out["fallback_reason"]
+
+
+def test_default_gemini_models(monkeypatch):
+    monkeypatch.delenv("COPILOT_MODEL_GEMINI", raising=False)
+    assert gemini_llm.model_list() == gemini_llm.DEFAULT_MODELS and "gemini-2.5-flash" not in gemini_llm.DEFAULT_MODELS
