@@ -12,6 +12,7 @@ from aerotwin.health.rul import estimate_rul
 from aerotwin.diagnosis.fault_diagnosis import diagnose
 from aerotwin.advisor.mission_advisor.go_nogo import advise
 from aerotwin.twin.particle_filter import HealthParticleFilter
+from aerotwin.xai.attribution import explain
 
 ROOT = Path(__file__).parent.parent.parent
 MODELS_DIR = ROOT / "models"
@@ -154,6 +155,10 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
     # its own persistence rule is the robustness mechanism there.
     hi_smooth = pd.Series(hi).rolling(20, min_periods=1).mean().values
 
+    # Explainable AI: per-sensor attribution for every window the ensemble
+    # flags (HI < 80); healthy-looking windows need no explanation.
+    xai = explain(bundle, X_stats, X_seq, [i for i in range(len(hi)) if hi[i] < 80])
+
     # Bayesian health twin (particle filter) runs on the raw 1 Hz telemetry,
     # reporting at the same instants as the windows above.
     twin_est = HealthParticleFilter(bundle.cfg).run(mission_df, times, horizon_s=planned_mission_s)
@@ -197,6 +202,7 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
             "rul_s": rul,
         }
         row["twin"] = twin_est.get(float(t))
+        row["xai"] = xai.get(i)
         row["diagnosis"] = diagnose(zrow) if degrading[i] else None
         row["advisor"] = advise(row, bundle.cfg, planned_mission_s)
         rows.append(row)

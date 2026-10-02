@@ -44,6 +44,27 @@ mismatch.
 
 Code: `aerotwin/twin/particle_filter.py` · UI: *Twin Replay → Bayesian health twin* and *Model Validation → Flagship*.
 
+## Explainable AI: which sensors caused the alert, and are the explanations right?
+
+Every window the ensemble flags gets a **sensor-level counterfactual explanation** (`aerotwin/xai/attribution.py`):
+each of the 15 residual channels is reset to its healthy baseline, all three detectors are re-scored, and the drop in
+each model's *raw* score (not its saturating percentile) is that sensor's share of the anomaly evidence. The dashboard
+shows it per model and for the ensemble, with a counterfactual sentence ("if oil pressure had been healthy, the fused
+percentile would drop from 97 to 49"). SHAP was not used: TreeSHAP covers only the Isolation Forest, and only at the
+level of 45 window statistics, not sensors.
+
+Explanations are **validated against the simulator's ground truth**: at the first alert of each test fault flight, is
+the top-ranked sensor one the fault physically acts on?
+
+| Whose explanation | Top sensor physically correct |
+|---|---|
+| Ensemble | **60/60** (95% CI 94–100%) |
+| LSTM-AE | 60/60 |
+| PCA-SPE | 58/60 |
+| Isolation Forest | 54/60 |
+
+The single false alarm on healthy flights is explained by a CHT 1 blip (74% of the evidence).
+
 ## ML ensemble results (same test split)
 
 | Metric | Result |
@@ -73,7 +94,7 @@ start evaluates the 120 test flights (~3 min), cached afterwards. Later starts t
 * Interactive API docs (Swagger): http://localhost:8000/docs
 * Developer mode with hot reload: `./run.sh --dev` → http://localhost:5173
 * Retrain the models: `./run.sh --retrain`
-* Tests: `python3 -m pytest -q` (42 tests, one documented expected failure)
+* Tests: `python3 -m pytest -q` (49 tests, one documented expected failure)
 
 ## Dashboard pages
 
@@ -111,6 +132,7 @@ residuals = measured − expected   (15 channels + CHT/EGT spread)
 | `aerotwin/models/` | Isolation Forest, PCA-SPE, LSTM autoencoder, score fusion |
 | `aerotwin/health/` | Health Index, alert logic, RUL |
 | `aerotwin/twin/` | **Flagship** particle-filter health twin + tuning harness |
+| `aerotwin/xai/` | Explainable AI: sensor-level counterfactual attribution |
 | `aerotwin/diagnosis/` | Physics-signature fault isolation |
 | `aerotwin/advisor/` | Go / Caution / No-Go mission advisor |
 | `aerotwin/inference/` | Full-pipeline replay, on-demand scenario simulation |

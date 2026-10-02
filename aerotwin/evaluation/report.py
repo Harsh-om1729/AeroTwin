@@ -17,6 +17,7 @@ import pandas as pd
 from aerotwin.evaluation.detection_rate import evaluate_detections
 from aerotwin.evaluation.false_alarms import count_false_alarms
 from aerotwin.evaluation.stats import clopper_pearson
+from aerotwin.xai.attribution import CHANNELS, EXPECTED, top_channels
 from aerotwin.evaluation.metrics import compute_metrics
 from aerotwin.features.residuals import compute_residuals
 from aerotwin.health.health_index import alert_logic, calibrate_p, compute_health_index
@@ -163,11 +164,13 @@ def build_report(split="test"):
                       for x in timelines[mid] if -300 <= x["t"] - t0 <= 1500]
 
     twin = _evaluate_twin(timelines, truth, healthy_ids, per_mission)
+    xai = _evaluate_xai(timelines, truth, healthy_ids)
 
     report = {
         "split": split,
         "dataset_version": str(fault_log["dataset_version"].iloc[0]) if "dataset_version" in fault_log else None,
         "twin": twin,
+        "xai": xai,
         "metrics": metrics,
         "summary": {
             "detection": _ci(int(det["detected"].sum()), len(det)),
@@ -193,6 +196,51 @@ def build_report(split="test"):
         "traces": traces,
     }
     return report
+
+
+def _evaluate_xai(timelines, truth, healthy_ids):
+    """Are the explanations RIGHT? At the first ML alert of every fault
+    flight, check whether the top-ranked sensor is one the injected fault
+    physically acts on (aerotwin.xai.attribution.EXPECTED). Also builds the
+    global view: mean evidence share per sensor for each fault type, over
+    every alerting window."""
+    hits = {"ensemble": [], "IF": [], "PCA": [], "LSTM": []}
+    heat = {ft: np.zeros(len(CHANNELS)) for ft in FAULT_TYPES}
+    heat_n = {ft: 0 for ft in FAULT_TYPES}
+    examples = []
+    for mid, r in truth.iterrows():
+        ft = r["fault_type"]
+        alerts = [x for x in timelines[mid] if x["alert"] and x["t"] >= r["fault_start_t"] and x["xai"]]
+        # global view: only the actionable period, onset -> failure (alerts
+        # stay latched after failure and would otherwise dominate)
+        for x in (a for a in alerts if a["t"] < r["failure_t"]):
+            heat[ft] += np.array([x["xai"]["share"].get(c, 0.0) for c in CHANNELS])
+            heat_n[ft] += 1
+        if not alerts:
+            continue
+        x = alerts[0]["xai"]
+        top = top_channels(x["share"], 1)
+        hits["ensemble"].append(bool(top) and top[0] in EXPECTED[ft])
+        for m in ("IF", "PCA", "LSTM"):
+            mt = top_channels(x["models"][m], 1)
+            hits[m].append(bool(mt) and mt[0] in EXPECTED[ft])
+
+    # what drove the false alarms on healthy flights?
+    false_alarm_causes = []
+    for mid in healthy_ids:
+        tl = timelines[mid]
+        for k, x in enumerate(tl):
+            if x["alert"] and (k == 0 or not tl[k - 1]["alert"]) and x["xai"]:
+                false_alarm_causes.append({"mission_id": mid, "t": x["t"], "top": top_channels(x["xai"]["share"], 3),
+                                           "share": {c: x["xai"]["share"][c] for c in top_channels(x["xai"]["share"], 3)}})
+    return {
+        "method": "sensor-level counterfactual occlusion on raw detector scores",
+        "top1_hit": {k: _ci(int(sum(v)), len(v)) for k, v in hits.items()},
+        "channels": CHANNELS,
+        "heatmap": {ft: [round(float(v / max(heat_n[ft], 1)), 1) for v in heat[ft]] for ft in FAULT_TYPES},
+        "heat_windows": heat_n,
+        "false_alarm_causes": false_alarm_causes,
+    }
 
 
 def _evaluate_twin(timelines, truth, healthy_ids, per_mission):

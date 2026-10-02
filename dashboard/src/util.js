@@ -58,3 +58,9 @@ export function trueHealth(truth, t) {
   return truth.fault_type === 'misfire' ? Math.max(0, 1 - truth.rate * x) : Math.exp(-truth.rate * x);
 }
 
+
+export const SENSOR_LABEL = {
+  oil_press_bar: 'Oil pressure', oil_temp_c: 'Oil temp', fuel_flow_lph: 'Fuel flow', vib_rms_g: 'Vibration',
+  alt_voltage_v: 'Alternator', cht_1: 'CHT 1', cht_2: 'CHT 2', cht_3: 'CHT 3', cht_4: 'CHT 4',
+  egt_1: 'EGT 1', egt_2: 'EGT 2', egt_3: 'EGT 3', egt_4: 'EGT 4', cht_spread: 'CHT spread', egt_spread: 'EGT spread',
+};

@@ -11,6 +11,7 @@ import {
 import Gauge from './Gauge';
 import EngineDiagram from './EngineDiagram';
 import BayesianTwin from './BayesianTwin';
+import XaiPanel from './XaiPanel';
 import { FAULT_SHORT, HYP_LABEL, MODEL_COLORS, clock, fmtDur, hiColor } from '../util';
 
 const SPEEDS = [
@@ -179,6 +180,15 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
   const maxScore = diag ? Math.max(...Object.values(diag.scores), 1) : 1;
   const sig = SIGNALS[signal];
   const evNow = events.filter((e) => e.i <= idx).reverse();
+  // Explanation shown: this window's, or (while health is still degraded) the
+  // most recent flagged window. Raw per-window HI can briefly bounce above 80
+  // inside a degraded stretch, which would otherwise blank the panel.
+  let xaiRow = cur.xai ? cur : null;
+  if (!xaiRow && (cur.hi_smooth < 80 || cur.alert)) {
+    for (let k = idx - 1; k >= Math.max(0, idx - 30); k -= 1) {
+      if (timeline[k].xai) { xaiRow = timeline[k]; break; }
+    }
+  }
   // Pop-up notifications: derived from playback position, so each event
   // shows for ~4 s of wall time while the replay runs past it.
   const toastSpan = SPEEDS[speed].wps * 4;
@@ -357,6 +367,8 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
         <Gauge label="Vibration" icon={Waves} value={cur.vib_rms_g} expected={cur.exp.vib_rms_g} unit="g RMS" min={0} max={8} decimals={2} bands={[{ to: 4, color: 'var(--ok)' }, { to: 6, color: 'var(--warn)' }, { to: 8, color: 'var(--crit)' }]} />
         <Gauge label="Fuel flow" icon={Fuel} value={cur.fuel_flow_lph} expected={cur.exp.fuel_flow_lph} unit="L/h" min={0} max={30} decimals={1} bands={[{ to: 30, color: 'var(--accent)' }]} />
       </div>
+
+      <XaiPanel row={cur} explained={xaiRow} />
 
       {/* charts */}
       <div className="grid g2 mt">

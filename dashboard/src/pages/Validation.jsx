@@ -7,6 +7,7 @@ import { BarChart3, Brain, Clock, Crosshair, Layers, LoaderCircle, Plane, Shield
 import { api } from '../api';
 import TwinViewer from '../components/TwinViewer';
 import TwinValidation from '../components/TwinValidation';
+import XaiValidation from '../components/XaiValidation';
 import { FAULT_COLORS, FAULT_SHORT, clock, fmtDur, pct } from '../util';
 
 function Kpi({ icon: Icon, label, value, note, color = 'var(--accent)' }) {
@@ -98,6 +99,8 @@ export default function Validation({ results }) {
       </div>
 
       {r.twin && <TwinValidation twin={r.twin} />}
+
+      {r.xai && <XaiValidation xai={r.xai} />}
 
       <div className="grid mt" style={{ gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr)' }}>
         <div className="panel">

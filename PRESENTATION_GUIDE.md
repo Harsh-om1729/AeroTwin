@@ -26,6 +26,11 @@
   advisor turns NO-GO. The ML ensemble alarms later, at T+29:49.
 - Tick **Ground truth** to show the real onset and failure time. Click **Report** for the printable maintenance report.
 
+- Scroll to **Explainable AI**: "The ML isn't a black box. I reset each sensor to healthy and re-score the models;
+  the drop is that sensor's share of the evidence. Here it is EGT 1 and the EGT spread, which is exactly the lean
+  cylinder." (On AT-108, bearing wear, vibration carries about 90% and the Isolation Forest visibly gets distracted
+  while PCA and the LSTM point at vibration, a good example of why the ensemble matters.)
+
 **3b. ⭐ The flagship: Bayesian health twin (1.5 min). This is "I designed and implemented this"**
 - Switch to **AT-104** (lubrication), scrub to about T+31:30, play, and scroll to the purple *Bayesian health twin* panel. Tick **Ground truth**.
 - "No sensor measures oil-system health directly. My particle filter *infers* it: 11 competing fault hypotheses,
@@ -44,6 +49,8 @@
 - Top KPIs: "On 60 simulated fault flights the ML ensemble caught 59 before failure. One bearing-wear fault was flagged
   too late; that is a real weakness. One false alarm in 80 healthy flight-hours. Every number has a 95% confidence interval."
 - **Ablation table:** "Alone, the three detectors raised 10, 33 and 78 false alarms over the same hours. Fused, 1."
+- **Explainable AI panel:** "I didn't just draw explanations, I checked them: the top-ranked sensor matched the
+  fault's physics in 60/60 test flights, and the heatmap shows each fault lighting up its own sensors."
 - **Flagship panel:** "The twin detected 60/60 with zero false alarms, and its uncertainty is validated: the 90% RUL
   interval contains the true failure time 90.0% of the time."
 
@@ -80,6 +87,12 @@ Coverage testing: over about 3,000 predictions, the 90% interval contained the t
 A standard prognostics metric (Saxena et al.): the fraction of RUL predictions within ±α (here 20%) of the true RUL.
 Twin 33%; the Health-Index trend 1.2%, though that method targets a different threshold, so it isn't a fair comparison.
 
+**How do you explain the ML's decisions? Why not SHAP?**
+Sensor-level counterfactual occlusion: reset one sensor's residual to healthy, re-score all three models, and measure
+the drop in their raw anomaly score. It works identically for the Isolation Forest, PCA, the LSTM and the fusion, and
+answers "which sensor?" directly. TreeSHAP would only cover the Isolation Forest, at the level of 45 window statistics.
+I validated the explanations against ground truth: the top sensor was physically correct in 60/60 test flights.
+
 **Why train only on healthy data?**
 Real fleets have almost no recorded failures. Unsupervised detectors learn "normal" and flag anything else, so they
 need no fault labels.
@@ -105,5 +118,5 @@ The Rotax 912 S/ULS is carburetted, so a single lean cylinder points to an intak
 Not without calibration. The physics twin's parameters must be fitted to real recordings, then every metric re-measured.
 
 **Tech stack?**
-Python, NumPy/Pandas, scikit-learn, PyTorch (LSTM-AE), FastAPI (REST + WebSocket), React + Vite + Recharts. 42 automated
+Python, NumPy/Pandas, scikit-learn, PyTorch (LSTM-AE), FastAPI (REST + WebSocket), React + Vite + Recharts. 49 automated
 tests (`python3 -m pytest`), including physics invariants, metric correctness and dataset reproducibility.
