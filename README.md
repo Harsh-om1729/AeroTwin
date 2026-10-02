@@ -44,6 +44,44 @@ mismatch.
 
 Code: `aerotwin/twin/particle_filter.py` · UI: *Twin Replay → Bayesian health twin* and *Model Validation → Flagship*.
 
+## Robustness: a fair race, and what happens when the twin is wrong
+
+**1. CUSUM baseline and matched comparison** (`aerotwin/models/cusum.py`, `report._amoc`). With an exact twin,
+healthy residuals are white noise, and Page's CUSUM is the textbook optimal detector for a mean shift in that
+case. Its threshold is calibrated on healthy validation flights only. Sweeping every method's threshold with the
+same 3-window persistence and comparing at **≤ 0.05 false-alarm events per flight-hour (≥ 95% detected)**:
+
+| Method | Median detection delay |
+|---|---|
+| Bayesian twin | 45 s |
+| CUSUM | 54 s |
+| ML ensemble (fused score) | not reachable under a 3-window rule; with its own 8-window rule: 0.012 /FH, 98% detected, 107 s |
+
+On a perfectly matched twin, plain CUSUM is as good as anything else. The ML ensemble's value is not detection speed.
+
+**2. Reality-gap study** (`aerotwin/simulator/variation.py`, `aerotwin/evaluation/gap_study.py`). A "true" engine
+departs from the twin by a knob `gap` ∈ [0, 1]: per-engine CHT/EGT offsets, oil-pump and vibration gains,
+heat-rejection error, thermal time constants ±30%, sensor bias, random-walk drift and AR(1) noise (magnitudes at
+gap = 1 are listed in the code, fixed before the study). The same 30 flights (10 healthy, 20 faulty) are flown at 8
+gap levels with identical noise, onsets and engine identities, and each method keeps its deployed threshold. A
+detection only counts if a *new* alarm starts after the fault begins.
+
+Largest gap at which a method stays usable (≤ 5% of healthy time in false alarm, ≥ 90% of faults caught):
+
+| | ML ensemble | Bayesian twin | CUSUM |
+|---|---|---|---|
+| Uncalibrated twin | 0.00 | **0.10** | 0.00 |
+| Per-engine calibration (one healthy reference flight) | 0.20 | **0.50** | 0.05 |
+
+* The optimal-on-paper CUSUM is the **most fragile**: at gap 0.05 it spends 82% of healthy time in alarm.
+* The Bayesian twin degrades most gracefully, and with calibration keeps ≥ 85% correct diagnosis even at gap 1.0.
+* **Honest caveats:** even calibrated, the twin's short false-alarm *events* grow with the gap (21 in 17 h at gap 0.2),
+  and its 90% RUL intervals become over-confident as the gap grows (calibrated: 81% coverage at gap 0.1, 41% at
+  gap 0.5), because the filter does not yet model mismatch. No method is deployable on a poorly matched engine without calibration.
+
+Run: `python3 -m aerotwin.evaluation.gap_study` (~5 min, cached in `cache/gap_study.json`). The Fault Injection Lab
+has a reality-gap slider and a calibration toggle to see this live.
+
 ## Explainable AI: which sensors caused the alert, and are the explanations right?
 
 Every window the ensemble flags gets a **sensor-level counterfactual explanation** (`aerotwin/xai/attribution.py`):
@@ -94,7 +132,7 @@ start evaluates the 120 test flights (~3 min), cached afterwards. Later starts t
 * Interactive API docs (Swagger): http://localhost:8000/docs
 * Developer mode with hot reload: `./run.sh --dev` → http://localhost:5173
 * Retrain the models: `./run.sh --retrain`
-* Tests: `python3 -m pytest -q` (49 tests, one documented expected failure)
+* Tests: `python3 -m pytest -q` (54 tests, one documented expected failure)
 
 ## Dashboard pages
 
@@ -133,6 +171,7 @@ residuals = measured − expected   (15 channels + CHT/EGT spread)
 | `aerotwin/health/` | Health Index, alert logic, RUL |
 | `aerotwin/twin/` | **Flagship** particle-filter health twin + tuning harness |
 | `aerotwin/xai/` | Explainable AI: sensor-level counterfactual attribution |
+| `aerotwin/models/cusum.py`, `aerotwin/simulator/variation.py` | CUSUM baseline; reality-gap engine for robustness studies |
 | `aerotwin/diagnosis/` | Physics-signature fault isolation |
 | `aerotwin/advisor/` | Go / Caution / No-Go mission advisor |
 | `aerotwin/inference/` | Full-pipeline replay, on-demand scenario simulation |
@@ -178,7 +217,7 @@ Every flight has its own seed, recorded in the fault logs with the dataset versi
 ## Limitations
 
 * Trained and validated on **simulated** flights with idealised, single, smoothly progressing faults. Real-engine accuracy will be lower and must be re-measured on recorded data (`aerotwin/real_engine/recording_protocol.md`).
-* **The healthy twin and the Bayesian twin use the same equations as the simulator**, and all simulated engines are identical. With no model mismatch, healthy residuals are pure sensor noise, which makes detection much easier than on a real engine.
+* **The main test split uses an exact twin** (the healthy twin and the Bayesian twin share the simulator's equations, and all engines are identical), so its numbers are an upper bound. The reality-gap study above measures how quickly each method degrades when that assumption fails.
 * The engine equations are heuristic (linear in power, first-order thermal lag); there is no manifold pressure, AFR, propeller load or airspeed-dependent cooling.
 * The "lean cylinder" fault key is still `injector_abnormality` in code; the 912 S/ULS is carburetted, so it models an intake leak or fuel-metering fault.
 * The test split has one severity per fault type, and faulty cylinders are always 1 or 2.

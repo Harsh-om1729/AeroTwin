@@ -13,6 +13,7 @@ from aerotwin.diagnosis.fault_diagnosis import diagnose
 from aerotwin.advisor.mission_advisor.go_nogo import advise
 from aerotwin.twin.particle_filter import HealthParticleFilter
 from aerotwin.xai.attribution import explain
+from aerotwin.models.cusum import cusum_statistic, load_or_calibrate
 
 ROOT = Path(__file__).parent.parent.parent
 MODELS_DIR = ROOT / "models"
@@ -48,6 +49,15 @@ class ModelBundle:
         self.p_calibrated = meta["p_calibrated"]
         self.window_size = meta["window_size"]
         self.stride = meta["stride"]
+        self.cusum_h = load_or_calibrate(MODELS_DIR / "cusum.json", self._val_cusum_statistics)
+
+    def _val_cusum_statistics(self):
+        df = pd.read_parquet(DATA_DIR / "val_healthy.parquet")
+        stats = []
+        for _, m in df.groupby("mission_id"):
+            res = compute_residuals(m.set_index("t").sort_index(), self.cfg).dropna()
+            stats.append(cusum_statistic(self.pipeline.scaler.transform(res)))
+        return stats
 
 
 _bundle = None
@@ -99,8 +109,22 @@ def _per_model_percentiles(bundle, scores_list):
     return out
 
 
+CALIBRATION_COLS = ["oil_press_bar", "oil_temp_c", "fuel_flow_lph", "vib_rms_g", "alt_voltage_v"] + \
+    [f"{s}_{i}" for i in range(1, 5) for s in ("cht", "egt")]
+
+
+def estimate_calibration(reference_df, cfg, warmup_s=600):
+    """Per-engine calibration offsets from one HEALTHY reference flight of the
+    same engine: the mean residual (measured - nominal twin) of each sensor
+    after warm-up. Subtracting it removes constant engine/sensor offsets; it
+    cannot remove gain, time-constant or drift errors."""
+    res, _ = compute_residuals(reference_df, cfg, return_twin=True)
+    res = res[res.index >= warmup_s]
+    return {c: float(res[c + "_res"].mean()) for c in CALIBRATION_COLS if c + "_res" in res}
+
+
 def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecutive=8,
-                             planned_mission_s=3600.0):
+                             planned_mission_s=3600.0, calibration=None):
     """Runs the full digital-twin pipeline (healthy twin -> residuals ->
     IF/PCA/LSTM -> fusion -> Health Index -> alert -> RUL -> diagnosis ->
     Go/No-Go) over one mission's telemetry.
@@ -115,6 +139,11 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
     diagnosis (None while healthy) and the mission advisor decision.
     """
     bundle = bundle or get_bundle()
+    if calibration:
+        # apply per-engine calibration to the measurements everything else sees
+        mission_df = mission_df.copy()
+        for c, off in calibration.items():
+            mission_df[c] = mission_df[c] - off
 
     res, twin = compute_residuals(mission_df, bundle.cfg, return_twin=True)
     res = res.dropna()
@@ -146,6 +175,8 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
     # reads to decide *which* fault is present.
     z = pd.DataFrame(bundle.pipeline.scaler.transform(res), index=res.index, columns=res.columns)
     z_win = z.rolling(bundle.window_size, min_periods=1).mean()
+    # CUSUM baseline on the same per-second standardised residuals
+    cusum = pd.Series(cusum_statistic(z.to_numpy()), index=z.index)
 
     telemetry_cols = [c for c in TELEMETRY_COLS + ["ambient_c"] if c in mission_df.columns]
     has_phase = "phase" in mission_df.columns
@@ -203,6 +234,8 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
         }
         row["twin"] = twin_est.get(float(t))
         row["xai"] = xai.get(i)
+        row["cusum"] = round(float(cusum.loc[t]), 2)
+        row["cusum_alarm"] = bool(cusum.loc[t] > bundle.cusum_h)
         row["diagnosis"] = diagnose(zrow) if degrading[i] else None
         row["advisor"] = advise(row, bundle.cfg, planned_mission_s)
         rows.append(row)

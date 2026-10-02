@@ -165,12 +165,14 @@ def build_report(split="test"):
 
     twin = _evaluate_twin(timelines, truth, healthy_ids, per_mission)
     xai = _evaluate_xai(timelines, truth, healthy_ids)
+    amoc = _amoc(timelines, truth, healthy_ids)
 
     report = {
         "split": split,
         "dataset_version": str(fault_log["dataset_version"].iloc[0]) if "dataset_version" in fault_log else None,
         "twin": twin,
         "xai": xai,
+        "amoc": amoc,
         "metrics": metrics,
         "summary": {
             "detection": _ci(int(det["detected"].sum()), len(det)),
@@ -196,6 +198,60 @@ def build_report(split="test"):
         "traces": traces,
     }
     return report
+
+
+def _persist(flags, n):
+    """True from the n-th consecutive True onwards (same persistence for every method)."""
+    out, run = [], 0
+    for f in flags:
+        run = run + 1 if f else 0
+        out.append(run >= n)
+    return out
+
+
+def _amoc(timelines, truth, healthy_ids, n_consec=3, target_far=0.05):
+    """Fair comparison of the three detectors: sweep each one's alarm
+    threshold (same 3-window persistence for all) and record false-alarm
+    events per healthy flight-hour against detection rate and median delay.
+    Comparing delays at the SAME false-alarm rate removes the bias of each
+    method's hand-picked operating point."""
+    scores = {
+        "ml": lambda r: r["fused"],
+        "twin": lambda r: r["twin"]["p_degraded"],
+        "cusum": lambda r: r["cusum"],
+    }
+    log = truth.reset_index()
+    durations = {m: MISSION_S for m in timelines}
+    curves, at_target = {}, {}
+    for name, f in scores.items():
+        healthy = np.concatenate([[f(x) for x in timelines[m]] for m in healthy_ids])
+        cands = set(np.quantile(healthy, np.linspace(0.9, 1.0, 41)).tolist())
+        top = float(healthy.max())
+        cands |= ({0.5, 0.8, 0.9, 0.95, 0.99, 0.999, 0.9999} if name == "twin"
+                  else {min(100.0, top + d) for d in (0.01, 0.1)} if name == "ml"
+                  else {top * k for k in (1.05, 1.2, 1.5, 2.0, 3.0)})
+        pts = []
+        for thr in sorted(cands):
+            preds = {m: list(zip([x["t"] for x in tl], _persist([f(x) > thr for x in tl], n_consec)))
+                     for m, tl in timelines.items()}
+            fa = count_false_alarms(preds, log, durations)
+            dets, delays = [], []
+            for mid, r in truth.iterrows():
+                p = preds[mid]
+                # credit only a NEW alarm after onset (not one already on before the fault)
+                hit = next((t for k, (t, a) in enumerate(p)
+                            if a and (k == 0 or not p[k - 1][1]) and r["fault_start_t"] <= t < r["failure_t"]), None)
+                dets.append(hit is not None)
+                if hit is not None:
+                    delays.append(hit - r["fault_start_t"])
+            pts.append({"threshold": round(float(thr), 4), "far": fa["per_fh"], "events": fa["events"],
+                        "detection": float(np.mean(dets)),
+                        "median_delay_s": float(np.median(delays)) if delays else None})
+        curves[name] = pts
+        ok = [p for p in pts if p["far"] <= target_far and p["detection"] >= 0.95 and p["median_delay_s"] is not None]
+        at_target[name] = min(ok, key=lambda p: p["median_delay_s"]) if ok else None
+    return {"n_consecutive": n_consec, "target_far": target_far, "curves": curves, "at_target": at_target,
+            "methods": {"ml": "ML ensemble (fused percentile)", "twin": "Bayesian twin (P degraded)", "cusum": "CUSUM"}}
 
 
 def _evaluate_xai(timelines, truth, healthy_ids):

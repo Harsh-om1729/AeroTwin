@@ -8,6 +8,7 @@ Index -> alert -> RUL -> fault diagnosis -> Go/No-Go); nothing is mocked.
     uvicorn backend.main:app --port 8000
 """
 import asyncio
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -141,19 +142,31 @@ def results():
     return _state["report"]
 
 
+@app.get("/api/gap-study")
+def gap_study():
+    """Reality-gap robustness study (python3 -m aerotwin.evaluation.gap_study)."""
+    path = ROOT / "cache" / "gap_study.json"
+    if not path.exists():
+        raise HTTPException(404, "Run `python3 -m aerotwin.evaluation.gap_study` to build the reality-gap study.")
+    return json.load(open(path))
+
+
 class Scenario(BaseModel):
     fault_type: Optional[str] = None
     severity: str = "moderate"
     onset_s: int = 1200
     profile: str = "standard"
     seed: Optional[int] = None
+    gap: float = 0.0
+    calibrate: bool = False
 
 
 @app.post("/api/simulate")
 async def simulate(s: Scenario):
     try:
         # CPU-bound (~0.5 s); keep the event loop free for other requests
-        return await asyncio.to_thread(run_scenario, s.fault_type or None, s.severity, s.onset_s, s.profile, s.seed)
+        return await asyncio.to_thread(run_scenario, s.fault_type or None, s.severity, s.onset_s, s.profile, s.seed,
+                                       s.gap, s.calibrate)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

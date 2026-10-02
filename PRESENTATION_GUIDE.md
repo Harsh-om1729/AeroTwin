@@ -54,6 +54,13 @@
 - **Flagship panel:** "The twin detected 60/60 with zero false alarms, and its uncertainty is validated: the 90% RUL
   interval contains the true failure time 90.0% of the time."
 
+- **Robustness panel (the strongest research point):** "On a perfect twin, the textbook CUSUM is as fast as my
+  filter, so I don't claim speed. The real question is: what if the twin is wrong? I built an engine that departs from
+  the twin by a controllable amount. CUSUM breaks at a tiny mismatch, the ML at a slightly larger one, and the Bayesian
+  twin survives longest, and with a simple per-engine calibration it stays usable up to gap 0.5."
+- Optional live demo: Fault Lab, set the **reality gap to 0.3**, run a lubrication fault without calibration (ML
+  false-alarms from take-off), then tick **calibration** and run again.
+
 **6. How it works + honest limitations (1 min). Say this before you are asked**
 - Walk the pipeline.
 - "Everything is simulated, and my twin uses the same equations as the simulator, so these results are an upper bound.
@@ -74,6 +81,16 @@ discrete/continuous states. Kalman filters assume linear-Gaussian.
 **Didn't the particle filter just copy the simulator?**
 Yes for the sensor physics, and that is the main limitation. It does not know the degradation law, the rate or the onset
 time, and it was tuned only on separately simulated flights. On a real engine the physics model must first be calibrated.
+
+**Why not just use a simple threshold or CUSUM?**
+I tested exactly that. With a perfect twin, CUSUM is optimal and matches my filter (45 s vs 54 s at the same
+false-alarm rate). But in the reality-gap study it is the most fragile method: at gap 0.05 it is in false alarm 82% of
+healthy flight time. The Bayesian twin degrades most gracefully, which is why it is the flagship.
+
+**What is the reality gap exactly?**
+A knob from 0 to 1 that makes the simulated engine differ from the twin: per-engine temperature offsets, pump and
+vibration gains, heat-rejection error, thermal time constants ±30%, sensor bias, drift and coloured noise. The same
+30 flights are flown at every level, so only the mismatch changes.
 
 **Why is the twin so much faster than the ML ensemble?**
 Partly design: the ML path waits for a 60 s window and 80 s of persistence before alarming, while the filter decides every
@@ -118,5 +135,5 @@ The Rotax 912 S/ULS is carburetted, so a single lean cylinder points to an intak
 Not without calibration. The physics twin's parameters must be fitted to real recordings, then every metric re-measured.
 
 **Tech stack?**
-Python, NumPy/Pandas, scikit-learn, PyTorch (LSTM-AE), FastAPI (REST + WebSocket), React + Vite + Recharts. 49 automated
+Python, NumPy/Pandas, scikit-learn, PyTorch (LSTM-AE), FastAPI (REST + WebSocket), React + Vite + Recharts. 54 automated
 tests (`python3 -m pytest`), including physics invariants, metric correctness and dataset reproducibility.

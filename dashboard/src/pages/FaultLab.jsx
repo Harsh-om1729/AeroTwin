@@ -25,6 +25,8 @@ export default function FaultLab() {
   const [severity, setSeverity] = useState('moderate');
   const [onset, setOnset] = useState(1200);
   const [profile, setProfile] = useState('standard');
+  const [gap, setGap] = useState(0);
+  const [calibrate, setCalibrate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [run, setRun] = useState(null);
   const [error, setError] = useState(null);
@@ -34,7 +36,7 @@ export default function FaultLab() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.simulate({ fault_type: fault || null, severity, onset_s: onset, profile });
+      const r = await api.simulate({ fault_type: fault || null, severity, onset_s: onset, profile, gap, calibrate });
       setRun(r);
       setRunNo((n) => n + 1);
     } catch (e) {
@@ -52,6 +54,12 @@ export default function FaultLab() {
       verdict = res.first_alert_t == null
         ? { ok: true, title: 'Correct – no false alarm', text: 'The twin flew a full healthy mission without raising an alert.' }
         : { ok: false, title: 'False alarm', text: `An alert fired at T+${clock(res.first_alert_t)} on a healthy engine.` };
+    } else if (res.first_alert_t < t.fault_start_t) {
+      verdict = {
+        ok: false,
+        title: `ML ensemble false-alarmed before the fault began (T+${clock(res.first_alert_t)})`,
+        text: `The fault was injected at T+${clock(t.fault_start_t)}. A mismatch between the simulated engine and the twin can make the residuals look abnormal from take-off; compare the Bayesian twin line below.`,
+      };
     } else if (res.first_alert_t == null) {
       verdict = { ok: false, title: 'Fault missed', text: 'No sustained alert before end of flight. Try a later onset or higher severity.' };
     } else {
@@ -67,6 +75,14 @@ export default function FaultLab() {
   }
 
   let twinLine = null;
+  let cusumLine = null;
+  if (run) {
+    const c = res.cusum_detect_t;
+    const preOnset = t.fault_type && c != null && c < t.fault_start_t;
+    cusumLine = !t.fault_type
+      ? (c == null ? 'CUSUM baseline: no alarm.' : `CUSUM baseline: false alarm at T+${clock(c)}.`)
+      : c == null ? 'CUSUM baseline: no alarm.' : preOnset ? `CUSUM baseline: already alarming at T+${clock(c)}, before the fault began.` : `CUSUM baseline: alarm ${fmtDur(c - t.fault_start_t)} after onset.`;
+  }
   if (run) {
     const td = res.twin_diagnosis;
     const key = td ? (td.cylinder ? `${td.fault}:${td.cylinder}` : td.fault) : null;
@@ -125,6 +141,16 @@ export default function FaultLab() {
             </select>
           </div>
         </div>
+        <div className="grid g2 mt" style={{ alignItems: 'end' }}>
+          <div>
+            <div className="field-label">5 · Reality gap: {gap.toFixed(2)} {gap === 0 ? '(engine matches the twin exactly)' : gap < 0.15 ? '(small mismatch)' : '(large mismatch)'}</div>
+            <input type="range" min={0} max={1} step={0.05} value={gap} onChange={(e) => setGap(+e.target.value)} />
+          </div>
+          <label className="toggle" style={{ paddingBottom: 6 }} title="Fly one healthy reference flight of the same engine first and subtract its residual offsets">
+            <input type="checkbox" checked={calibrate} disabled={gap === 0} onChange={(e) => setCalibrate(e.target.checked)} />
+            Per-engine calibration (healthy reference flight first)
+          </label>
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 18 }}>
           <button className="btn primary" onClick={go} disabled={busy} style={{ padding: '11px 20px', fontSize: 14 }}>
             {busy ? <LoaderCircle size={17} className="spin" /> : <FlaskConical size={17} />}
@@ -145,9 +171,10 @@ export default function FaultLab() {
               <div style={{ fontWeight: 800, fontSize: 17 }}>{verdict.title}</div>
               <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{verdict.text}</div>
               {twinLine && <div style={{ fontSize: 13, marginTop: 6, color: '#c7d2fe' }}><Atom size={13} style={{ verticalAlign: -2 }} /> {twinLine}</div>}
+              {cusumLine && <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{cusumLine}</div>}
             </div>
             <div className="mono dim" style={{ marginLeft: 'auto', fontSize: 11, textAlign: 'right' }}>
-              run #{runNo} · seed {run.seed}<br />{PROFILES[run.profile]}
+              run #{runNo} · seed {run.seed}<br />{PROFILES[run.profile]}<br />reality gap {run.gap.toFixed(2)}{run.calibrated ? ' · calibrated' : ''}
             </div>
           </div>
           <div className="mt">

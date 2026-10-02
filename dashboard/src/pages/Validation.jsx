@@ -8,6 +8,7 @@ import { api } from '../api';
 import TwinViewer from '../components/TwinViewer';
 import TwinValidation from '../components/TwinValidation';
 import XaiValidation from '../components/XaiValidation';
+import RobustnessStudy from '../components/RobustnessStudy';
 import { FAULT_COLORS, FAULT_SHORT, clock, fmtDur, pct } from '../util';
 
 function Kpi({ icon: Icon, label, value, note, color = 'var(--accent)' }) {
@@ -101,6 +102,8 @@ export default function Validation({ results }) {
       {r.twin && <TwinValidation twin={r.twin} />}
 
       {r.xai && <XaiValidation xai={r.xai} />}
+
+      <RobustnessStudy amoc={r.amoc} native={{ far: r.metrics.false_alarms.per_fh, detection: r.summary.detection.rate, delay: r.twin.ml_median_delay_s }} />
 
       <div className="grid mt" style={{ gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr)' }}>
         <div className="panel">

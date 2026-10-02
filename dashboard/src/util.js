@@ -64,3 +64,8 @@ export const SENSOR_LABEL = {
   alt_voltage_v: 'Alternator', cht_1: 'CHT 1', cht_2: 'CHT 2', cht_3: 'CHT 3', cht_4: 'CHT 4',
   egt_1: 'EGT 1', egt_2: 'EGT 2', egt_3: 'EGT 3', egt_4: 'EGT 4', cht_spread: 'CHT spread', egt_spread: 'EGT spread',
 };
+
+// Detector identity colours for comparison charts: first three slots of the
+// validated reference palette (dark mode; all-pairs CVD dE >= 9.4, contrast >= 3:1 on panels).
+export const METHOD_COLORS = { ml: '#3987e5', cusum: '#d95926', twin: '#199e70' };
+export const METHOD_LABEL = { ml: 'ML ensemble', twin: 'Bayesian twin', cusum: 'CUSUM' };

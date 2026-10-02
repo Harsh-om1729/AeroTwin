@@ -6,7 +6,7 @@ precomputed: each request is a fresh, unseen mission.
 """
 import numpy as np
 
-from aerotwin.inference.replay import compute_mission_timeline, get_bundle
+from aerotwin.inference.replay import compute_mission_timeline, estimate_calibration, get_bundle
 from aerotwin.simulator.fault_injection import FaultInjector, compute_failure_t
 from aerotwin.simulator.generate_dataset import generate_mission_data
 
@@ -22,7 +22,11 @@ SEVERITY_MULT = {"mild": 0.5, "moderate": 1.0, "severe": 2.0}
 PROFILES = ["standard", "hot_weather", "high_altitude", "rapid_throttle"]
 
 
-def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="standard", seed=None):
+def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="standard", seed=None,
+                 gap=0.0, calibrate=False):
+    """gap in [0, 1]: how far the simulated engine departs from the twin
+    (aerotwin.simulator.variation). calibrate: fly a healthy reference flight
+    of the same engine first and subtract its residual offsets."""
     if profile not in PROFILES:
         raise ValueError(f"profile must be one of {PROFILES}")
     if fault_type and fault_type not in BASE_RATES:
@@ -46,8 +50,16 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
             "rate": float(rate),
         }
 
-    df = generate_mission_data("SIM", f"sim_{seed}", profile, seed=seed, fault_injector=injector)
-    timeline = compute_mission_timeline(df.set_index("t").sort_index(), get_bundle())
+    gap = float(np.clip(gap, 0.0, 1.0))
+    engine_seed = seed + 50_000
+    df = generate_mission_data("SIM", f"sim_{seed}", profile, seed=seed, fault_injector=injector,
+                               gap=gap, engine_seed=engine_seed)
+    calibration = None
+    if calibrate and gap > 0:
+        np.random.seed((seed + 77) % 2**32)
+        ref = generate_mission_data("SIM", f"sim_{seed}_ref", profile, seed=seed + 77, gap=gap, engine_seed=engine_seed)
+        calibration = estimate_calibration(ref.set_index("t").sort_index(), get_bundle().cfg)
+    timeline = compute_mission_timeline(df.set_index("t").sort_index(), get_bundle(), calibration=calibration)
 
     first_alert = next((r for r in timeline if r["alert"]), None)
     result = {"first_alert_t": first_alert["t"] if first_alert else None}
@@ -67,4 +79,7 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
             result["twin_delay_s"] = twin_det["t"] - onset_s
             result["twin_lead_time_s"] = truth["failure_t"] - twin_det["t"]
 
-    return {"seed": seed, "profile": profile, "truth": truth, "result": result, "timeline": timeline}
+    cusum_hit = next((r for r in timeline if r["cusum_alarm"]), None)
+    result["cusum_detect_t"] = cusum_hit["t"] if cusum_hit else None
+    return {"seed": seed, "profile": profile, "gap": gap, "calibrated": calibration is not None,
+            "truth": truth, "result": result, "timeline": timeline}

@@ -12,16 +12,21 @@ def load_config():
     with open(cfg_path, 'r') as f:
         return yaml.safe_load(f)
 
-def generate_mission_data(airframe_id, mission_id, profile_name, seed, fault_injector=None):
+def generate_mission_data(airframe_id, mission_id, profile_name, seed, fault_injector=None, gap=0.0, engine_seed=None):
+    """gap > 0 flies a GapEngine: a specific engine and sensor set that departs
+    from the nominal twin model (see aerotwin.simulator.variation)."""
     cfg = load_config()
     profile = generate_profile(name=profile_name, duration_s=3600)
-    
-    # Pre-allocate rows
+
     rows = []
-    
+
     # Initialize engine
     # In a fault run, fault might start at 1000s. We evaluate health at each step.
-    engine = EngineModel(cfg, seed)
+    if gap > 0:
+        from aerotwin.simulator.variation import GapEngine
+        engine = GapEngine(cfg, seed, gap, engine_seed=engine_seed)
+    else:
+        engine = EngineModel(cfg, seed)
     
     for i, t in enumerate(profile["t"]):
         # Update health if fault injected

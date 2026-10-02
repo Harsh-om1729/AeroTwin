@@ -15,6 +15,7 @@ export const api = {
   airframe: (id) => req(`/fleet/${id}`),
   mission: (split, id) => req(`/missions/${split}/${id}`),
   results: () => req('/results'),
+  gapStudy: () => req('/gap-study'),
   simulate: (body) =>
     req('/simulate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
 };

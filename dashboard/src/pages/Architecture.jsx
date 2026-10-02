@@ -137,7 +137,7 @@ export default function Architecture({ meta }) {
           <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.7 }}>
             <li>Trained and validated on <b>simulated</b> flights; the fault models are idealised. The healthy twin and the particle filter use the <b>same equations as the simulator</b> and all simulated engines are identical, so results are an upper bound. Real-engine accuracy will be lower and must be re-measured.</li>
             <li>Next step: record a real engine run (protocol in <span className="mono">aerotwin/real_engine/recording_protocol.md</span>) and use sim-to-real calibration of the twin.</li>
-            <li>RUL is a linear-trend extrapolation without uncertainty bands. A probabilistic model (e.g. particle filter) would give confidence intervals.</li>
+            <li>Reality-gap study: with an uncalibrated twin every method breaks at a small mismatch (CUSUM first, then ML, then the Bayesian twin). Per-engine calibration extends the usable range, and the filter's RUL intervals still need to account for model mismatch.</li>
             <li>One fault at a time; compound faults and sensor failures (stuck/drifting sensors) are not yet modelled.</li>
             <li>Decision support only, not a certified airworthiness system.</li>
           </ul>
