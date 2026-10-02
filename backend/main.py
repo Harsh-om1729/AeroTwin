@@ -24,9 +24,15 @@ from aerotwin.diagnosis.fault_diagnosis import FAULT_ACTIONS, FAULT_LABELS
 from aerotwin.evaluation.report import load_or_build
 from aerotwin.inference.replay import DATA_DIR, compute_mission_timeline, get_bundle, list_missions, load_mission_df
 from aerotwin.inference.simulate import PROFILES, SEVERITY_MULT, run_scenario
+from aerotwin.copilot import service as copilot
+from aerotwin.copilot.evidence import Evidence
+from aerotwin.copilot.llm import load_env_file
 
 ROOT = Path(__file__).parent.parent
 DIST = ROOT / "dashboard" / "dist"
+
+# Optional git-ignored .env with ANTHROPIC_API_KEY / COPILOT_MODEL for the AI copilot
+load_env_file(ROOT / ".env")
 
 # Demo fleet: each airframe's "last flight" is a real held-out test mission
 # (never seen in training), replayed through the full pipeline at start-up.
@@ -84,6 +90,9 @@ async def lifespan(app):
     # Validation report over the full held-out test set (cached on disk;
     # rebuilt automatically if the models are retrained).
     _state["report"] = load_or_build()
+    gap_path = ROOT / "cache" / "gap_study.json"
+    _state["evidence"] = Evidence(FLEET, _state["timelines"], bundle.cfg, _state["report"],
+                                  json.load(open(gap_path)) if gap_path.exists() else None)
     yield
 
 
@@ -140,6 +149,28 @@ def mission(split: str, mission_id: str):
 @app.get("/api/results")
 def results():
     return _state["report"]
+
+
+class CopilotQuestion(BaseModel):
+    question: str
+    aircraft_id: Optional[str] = None
+    t: Optional[float] = None
+    history: list = []
+    force_offline: bool = False
+
+
+@app.get("/api/copilot/status")
+def copilot_status():
+    """Whether the Claude path is configured. Never exposes the key."""
+    return copilot.status()
+
+
+@app.post("/api/copilot")
+async def copilot_ask(q: CopilotQuestion):
+    """Grounded maintenance Q&A. Always answers: Claude when available, otherwise
+    the offline engine, with the reason in `fallback_reason`."""
+    return await asyncio.to_thread(copilot.answer, _state["evidence"], q.question, q.aircraft_id, q.t,
+                                   q.history, q.force_offline)
 
 
 @app.get("/api/gap-study")

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LoaderCircle } from 'lucide-react';
+import { Bot, LoaderCircle } from 'lucide-react';
 import { api } from '../api';
 import TwinViewer from '../components/TwinViewer';
 import { decisionBadge } from '../util';
@@ -36,6 +36,7 @@ export default function LiveTwin({ fleet, selected, onSelect }) {
             {fleet.map((f) => <option key={f.id} value={f.id}>{f.id} · {f.callsign} · {f.decision}</option>)}
           </select>
           {data && <span className={`badge ${decisionBadge(data.summary.decision)}`}>{data.summary.decision}</span>}
+          <a className="btn" href={`#/copilot/${id}`}><Bot size={15} /> Ask AI Copilot</a>
         </div>
       </div>
       {error && <div className="panel" style={{ color: 'var(--crit)' }}>Failed to load: {error}</div>}

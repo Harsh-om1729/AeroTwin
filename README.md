@@ -44,6 +44,34 @@ mismatch.
 
 Code: `aerotwin/twin/particle_filter.py` · UI: *Twin Replay → Bayesian health twin* and *Model Validation → Flagship*.
 
+## AI Maintenance Copilot (Claude, with an offline fallback)
+
+A chat page (**AI Copilot**) where an engineer asks plain-language questions: "Which aircraft should we inspect
+first?", "Why is AT-104 grounded?", "What should the technician check on AT-107?", "How reliable is this system?".
+
+* **Grounded by construction** (`aerotwin/copilot/`). The model can only read the twin's own outputs through six
+  read-only tools: fleet overview, aircraft status at any flight time, event timeline, engine limits, maintenance
+  actions, validation results. The system prompt requires every number to come from a tool, says "not in the data"
+  otherwise, and forbids overriding or softening a Go/No-Go decision.
+* **Claude path** (`llm.py`): a tool-use loop on `claude-opus-5-5` (change with `COPILOT_MODEL`), effort `medium`,
+  server-side refusal fallbacks enabled, at most 6 tool rounds, 30 s per request and 75 s in total.
+* **Always answers** (`service.py`, `offline.py`). If Claude cannot answer (no key, credit exhausted, invalid key,
+  rate limit, no internet, timeout, refusal, empty reply), the offline engine answers the same question from the
+  *same* evidence functions, and the UI shows which engine answered and why. Verified against the real API with an
+  invalid key: a 401 fell back to a full offline answer in 0.7 s.
+* **Key safety:** the key lives only in a git-ignored `.env` (see `.env.example`), is never sent to the browser and
+  never logged.
+
+Enable Claude (optional; billed per use, separately from a claude.ai subscription):
+
+```bash
+cp .env.example .env        # then put your key after ANTHROPIC_API_KEY=
+pip install anthropic       # already in requirements.txt
+./run.sh
+```
+
+Without a key the copilot runs entirely offline, so the demo works with no internet.
+
 ## Robustness: a fair race, and what happens when the twin is wrong
 
 **1. CUSUM baseline and matched comparison** (`aerotwin/models/cusum.py`, `report._amoc`). With an exact twin,
@@ -132,7 +160,7 @@ start evaluates the 120 test flights (~3 min), cached afterwards. Later starts t
 * Interactive API docs (Swagger): http://localhost:8000/docs
 * Developer mode with hot reload: `./run.sh --dev` → http://localhost:5173
 * Retrain the models: `./run.sh --retrain`
-* Tests: `python3 -m pytest -q` (54 tests, one documented expected failure)
+* Tests: `python3 -m pytest -q` (89 tests, one documented expected failure)
 
 ## Dashboard pages
 
@@ -170,6 +198,7 @@ residuals = measured − expected   (15 channels + CHT/EGT spread)
 | `aerotwin/models/` | Isolation Forest, PCA-SPE, LSTM autoencoder, score fusion |
 | `aerotwin/health/` | Health Index, alert logic, RUL |
 | `aerotwin/twin/` | **Flagship** particle-filter health twin + tuning harness |
+| `aerotwin/copilot/` | AI maintenance copilot: grounded tools, Claude tool loop, offline engine |
 | `aerotwin/xai/` | Explainable AI: sensor-level counterfactual attribution |
 | `aerotwin/models/cusum.py`, `aerotwin/simulator/variation.py` | CUSUM baseline; reality-gap engine for robustness studies |
 | `aerotwin/diagnosis/` | Physics-signature fault isolation |
@@ -200,6 +229,8 @@ python3 -m aerotwin.evaluation.report            # frozen test split → cache/r
 | POST | `/api/simulate` | `{fault_type, severity, onset_s, profile, seed}` → new simulated flight + analysis |
 | GET | `/api/results` | Validation report |
 | GET | `/api/meta` | Engine limits, model configuration |
+| POST | `/api/copilot` | `{question, aircraft_id?, t?, history?, force_offline?}` → grounded answer, mode, evidence used, fallback reason |
+| GET | `/api/copilot/status` | Whether Claude is configured (never returns the key) |
 | WS | `/api/stream/{id}?speed=5` | Window-by-window stream of a replayed flight (the dashboard itself replays client-side) |
 
 ## Data splits (dataset v2.0)

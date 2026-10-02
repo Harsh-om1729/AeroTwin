@@ -11,3 +11,4 @@ uvicorn[standard]
 pydantic
 httpx
 pytest
+anthropic>=1.11

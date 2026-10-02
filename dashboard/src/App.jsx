@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Activity, BarChart3, FlaskConical, LayoutGrid, Network, Plane } from 'lucide-react';
+import { Activity, BarChart3, Bot, FlaskConical, LayoutGrid, Network, Plane } from 'lucide-react';
 import { api } from './api';
 import Fleet from './pages/Fleet';
 import LiveTwin from './pages/LiveTwin';
 import FaultLab from './pages/FaultLab';
 import Validation from './pages/Validation';
 import Architecture from './pages/Architecture';
+import Copilot from './pages/Copilot';
 import Background from './components/Background';
 import BootScreen from './components/BootScreen';
 
@@ -13,6 +14,7 @@ const PAGES = [
   { id: 'fleet', label: 'Fleet Command', icon: LayoutGrid },
   { id: 'twin', label: 'Twin Replay', icon: Activity },
   { id: 'lab', label: 'Fault Injection Lab', icon: FlaskConical },
+  { id: 'copilot', label: 'AI Copilot', icon: Bot },
   { id: 'validation', label: 'Model Validation', icon: BarChart3 },
   { id: 'architecture', label: 'How it works', icon: Network },
 ];
@@ -78,6 +80,8 @@ export default function App() {
     content = <LiveTwin fleet={fleet} selected={sel} onSelect={(id) => go('twin', id)} />;
   } else if (page === 'lab') {
     content = <FaultLab />;
+  } else if (page === 'copilot') {
+    content = <Copilot fleet={fleet} selected={sel} />;
   } else if (page === 'validation') {
     content = <Validation results={results} />;
   } else {

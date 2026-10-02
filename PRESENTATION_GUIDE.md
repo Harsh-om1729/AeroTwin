@@ -61,6 +61,14 @@
 - Optional live demo: Fault Lab, set the **reality gap to 0.3**, run a lubrication fault without calibration (ML
   false-alarms from take-off), then tick **calibration** and run again.
 
+**5b. AI Copilot (1 min)**
+- Open **AI Copilot**, click "Which aircraft should we inspect first?", then "What should the technician check on AT-107?".
+- "The copilot can only read the twin's own evidence through six read-only tools, so every number it states comes from
+  the models; it explains the Go/No-Go decision but can never override it."
+- Point at the badge under each answer: which engine answered and which evidence it used. "If the Claude API fails
+  (no credit, no internet), the offline engine answers from the same data, so the demo can't break."
+- Tick **Offline mode** to show it live.
+
 **6. How it works + honest limitations (1 min). Say this before you are asked**
 - Walk the pipeline.
 - "Everything is simulated, and my twin uses the same equations as the simulator, so these results are an upper bound.
@@ -91,6 +99,15 @@ healthy flight time. The Bayesian twin degrades most gracefully, which is why it
 A knob from 0 to 1 that makes the simulated engine differ from the twin: per-engine temperature offsets, pump and
 vibration gains, heat-rejection error, thermal time constants ±30%, sensor bias, drift and coloured noise. The same
 30 flights are flown at every level, so only the mismatch changes.
+
+**Isn't an LLM going to hallucinate engine data?**
+It can only see data through six read-only tools that return the twin's own outputs, and the system prompt requires
+every number to come from a tool and to say "not in the data" otherwise. It also never decides anything: the Go/No-Go
+comes from the physics and models. Each answer shows which evidence it used.
+
+**What happens if the API key runs out of credit or there is no internet?**
+The copilot automatically answers with its offline engine from the same evidence functions, and shows why (e.g. "API
+credit balance too low"). I tested every failure type, including a real call with an invalid key.
 
 **Why is the twin so much faster than the ML ensemble?**
 Partly design: the ML path waits for a 60 s window and 80 s of persistence before alarming, while the filter decides every
@@ -135,5 +152,5 @@ The Rotax 912 S/ULS is carburetted, so a single lean cylinder points to an intak
 Not without calibration. The physics twin's parameters must be fitted to real recordings, then every metric re-measured.
 
 **Tech stack?**
-Python, NumPy/Pandas, scikit-learn, PyTorch (LSTM-AE), FastAPI (REST + WebSocket), React + Vite + Recharts. 54 automated
+Python, NumPy/Pandas, scikit-learn, PyTorch (LSTM-AE), FastAPI (REST + WebSocket), React + Vite + Recharts. 89 automated
 tests (`python3 -m pytest`), including physics invariants, metric correctness and dataset reproducibility.
