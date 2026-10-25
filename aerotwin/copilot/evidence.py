@@ -401,5 +401,5 @@ def run_tool(ev, name, args):
         if name == "get_validation_summary":
             return ev.validation_summary()
         return {"error": f"Unknown tool '{name}'."}
-    except (TypeError, ValueError, KeyError) as e:
+    except (TypeError, ValueError, KeyError, OverflowError, AttributeError) as e:
         return {"error": f"Invalid arguments for {name}: {e}"}

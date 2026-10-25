@@ -69,7 +69,12 @@ def load_env_file(path):
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        k, v = k.strip(), v.strip().strip('"').strip("'")
+        k = k.strip().removeprefix("export ").strip()
+        v = v.strip()
+        if v[:1] in ("'", '"') and v.count(v[0]) >= 2:  # quoted: keep everything inside the quotes
+            v = v[1:v.index(v[0], 1)]
+        else:  # unquoted: drop a trailing " # comment"
+            v = v.split(" #", 1)[0].strip()
         if k and v and k not in os.environ:
             os.environ[k] = v
 

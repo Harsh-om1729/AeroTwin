@@ -5,15 +5,16 @@ from sklearn.preprocessing import StandardScaler
 def create_windows(df, window_size=60, stride=10):
     """
     Slices a continuous dataframe into overlapping windows.
-    Returns array of shape (N_windows, window_size, n_features).
+    Returns (windows, end_times); windows has shape (N_windows, window_size, n_features).
+    The dataframe must be a single contiguous mission, never a concatenation of several.
     """
     # Assuming dataframe is sorted by time and contiguous
     data = df.values
     n_samples = len(data)
     
     if n_samples < window_size:
-        return np.empty((0, window_size, data.shape[1]))
-        
+        return np.empty((0, window_size, data.shape[1])), df.index[:0]
+
     n_windows = (n_samples - window_size) // stride + 1
     windows = np.array([data[i * stride : i * stride + window_size] for i in range(n_windows)])
     

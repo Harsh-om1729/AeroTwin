@@ -6,6 +6,8 @@ from scipy.stats import beta, chi2
 
 def clopper_pearson(k, n, conf=0.95):
     """Exact binomial CI for k successes in n trials -> (low, high)."""
+    if n == 0:
+        return float("nan"), float("nan")
     a = 1 - conf
     low = 0.0 if k == 0 else float(beta.ppf(a / 2, k, n - k + 1))
     high = 1.0 if k == n else float(beta.ppf(1 - a / 2, k + 1, n - k))

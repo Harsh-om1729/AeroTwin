@@ -54,7 +54,7 @@ export default function FaultLab() {
       verdict = res.first_alert_t == null
         ? { ok: true, title: 'Correct – no false alarm', text: 'The twin flew a full healthy mission without raising an alert.' }
         : { ok: false, title: 'False alarm', text: `An alert fired at T+${clock(res.first_alert_t)} on a healthy engine.` };
-    } else if (res.first_alert_t < t.fault_start_t) {
+    } else if (res.first_alert_t != null && res.first_alert_t < t.fault_start_t) {
       verdict = {
         ok: false,
         title: `ML ensemble false-alarmed before the fault began (T+${clock(res.first_alert_t)})`,

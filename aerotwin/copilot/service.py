@@ -89,7 +89,10 @@ def answer(ev, question, aircraft_id=None, t=None, history=None, force_offline=F
     given, exactly those providers are used, so tests never reach a real API."""
     question = (question or "").strip()[:MAX_QUESTION]
     a = ev.resolve(aircraft_id)
-    t = None if t is None or a is None else max(0, min(3600, int(t)))
+    try:
+        t = None if t is None or a is None else max(0, min(3600, int(t)))
+    except (TypeError, ValueError, OverflowError):  # NaN / inf from the client
+        t = None
     time_label = "the end of its last flight" if t is None else clock(t)
     started = time.monotonic()
 

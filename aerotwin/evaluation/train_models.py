@@ -21,6 +21,19 @@ def load_config():
     with open(cfg_path, 'r') as f:
         return yaml.safe_load(f)
 
+def residuals_by_mission(df, cfg):
+    """One residual frame per mission (dropna'd), so windows never straddle the
+    landing of one mission and the taxi of the next -- inference windows each
+    flight on its own, and training must see the same kind of window."""
+    return [compute_residuals(g, cfg).dropna() for _, g in df.groupby("mission_id", sort=False)]
+
+
+def stack_windows(parts, transform):
+    """transform = pipeline.transform_to_stats / transform_to_sequences, applied per mission."""
+    out = [transform(p)[0] for p in parts]
+    return np.concatenate([o for o in out if len(o)])
+
+
 def main():
     # Reproducible training: same data + same seed -> same models
     np.random.seed(0)
@@ -34,20 +47,16 @@ def main():
     df_val = load_data(data_dir, "val_healthy")
     
     print("Computing residuals...")
-    res_train = compute_residuals(df_train, cfg)
-    res_val = compute_residuals(df_val, cfg)
+    train_parts = residuals_by_mission(df_train, cfg)
+    val_parts = residuals_by_mission(df_val, cfg)
     
     print("Fitting Feature Pipeline (Scaler)...")
-    # Drop rows with NaNs if any
-    res_train.dropna(inplace=True)
-    res_val.dropna(inplace=True)
-    
     pipeline = FeaturePipeline()
-    pipeline.fit(res_train)
+    pipeline.fit(pd.concat(train_parts))
     
-    print("Extracting Windows...")
-    X_train_stats, _ = pipeline.transform_to_stats(res_train)
-    X_val_stats, _ = pipeline.transform_to_stats(res_val)
+    print("Extracting Windows (per mission)...")
+    X_train_stats = stack_windows(train_parts, pipeline.transform_to_stats)
+    X_val_stats = stack_windows(val_parts, pipeline.transform_to_stats)
     
     print(f"Train windows: {len(X_train_stats)}, Val windows: {len(X_val_stats)}")
     
@@ -63,8 +72,8 @@ def main():
     
     print("Training LSTM Autoencoder...")
     # Get sequence data for LSTM
-    X_train_seq, _ = pipeline.transform_to_sequences(res_train)
-    X_val_seq, _ = pipeline.transform_to_sequences(res_val)
+    X_train_seq = stack_windows(train_parts, pipeline.transform_to_sequences)
+    X_val_seq = stack_windows(val_parts, pipeline.transform_to_sequences)
     
     # Simple training run
     lstm_model = LSTMAEDetector(n_feat=X_train_seq.shape[2], hidden=32, latent=8)

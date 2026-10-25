@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from aerotwin.evaluation.detection_rate import evaluate_detections
+from aerotwin.evaluation.detection_rate import evaluate_detections, first_new_alarm_index
 from aerotwin.evaluation.false_alarms import count_false_alarms
 from aerotwin.evaluation.stats import clopper_pearson
 from aerotwin.xai.attribution import CHANNELS, EXPECTED, top_channels
@@ -119,7 +119,9 @@ def build_report(split="test"):
     per_mission = []
     for mid, r in truth.iterrows():
         tl = timelines[mid]
-        first_alert = next((x for x in tl if x["alert"] and x["t"] >= r["fault_start_t"]), None)
+        # same definition as `detected`: a new alarm inside [onset, failure)
+        i = first_new_alarm_index([x["alert"] for x in tl], [x["t"] for x in tl], r["fault_start_t"], r["failure_t"])
+        first_alert = tl[i] if i is not None else None
         diag = first_alert["diagnosis"] if first_alert else None
         pred = diag["fault"] if diag else "none"
         confusion[r["fault_type"]][pred] += 1
@@ -266,7 +268,10 @@ def _evaluate_xai(timelines, truth, healthy_ids):
     examples = []
     for mid, r in truth.iterrows():
         ft = r["fault_type"]
-        alerts = [x for x in timelines[mid] if x["alert"] and x["t"] >= r["fault_start_t"] and x["xai"]]
+        tl = timelines[mid]
+        i0 = first_new_alarm_index([x["alert"] for x in tl], [x["t"] for x in tl], r["fault_start_t"], r["failure_t"])
+        # the actionable alert run: from the first new alarm until failure
+        alerts = [] if i0 is None else [x for x in tl[i0:] if x["alert"] and x["t"] < r["failure_t"] and x["xai"]]
         # global view: only the actionable period, onset -> failure (alerts
         # stay latched after failure and would otherwise dominate)
         for x in (a for a in alerts if a["t"] < r["failure_t"]):
@@ -299,6 +304,11 @@ def _evaluate_xai(timelines, truth, healthy_ids):
     }
 
 
+def _num(x):
+    """float, or None for NaN (json.dump would write bare NaN, which JSON.parse rejects)."""
+    return None if x is None or pd.isna(x) else float(x)
+
+
 def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
     """Flagship evaluation: Bayesian particle-filter twin vs the ML ensemble
     on the same held-out flights."""
@@ -316,13 +326,14 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
         shape = "lin" if ft == "misfire" else "exp"
         twin_flags[mid] = [(x["t"], x["twin"]["p_degraded"] > TWIN_P) for x in tl]
         hits = {50: [], 80: [], 90: []}
-        det = next((x for x in tl if x["t"] >= t0 and x["twin"]["p_degraded"] > TWIN_P), None)
+        j = first_new_alarm_index([f for _, f in twin_flags[mid]], [t for t, _ in twin_flags[mid]], t0, fail)
+        det = tl[j] if j is not None else None
         m = det["twin"]["map"] if det else None
         detect_rows.append({
             "mission_id": mid, "fault_type": ft,
             "twin_delay_s": det["t"] - t0 if det else None,
             "ml_delay_s": ml_alert[mid] - t0 if ml_alert[mid] is not None else None,
-            "twin_detected": bool(det and det["t"] < fail),
+            "twin_detected": det is not None,
             "twin_diag_ok": bool(m and m["fault"] == ft and m["cylinder"] == TRUE_CYLINDER.get(ft)),
         })
         if not det:
@@ -370,6 +381,9 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
     cov_ci = {}
     for nom in cover:
         flights = [f[nom] for f in cover_by_flight if f[nom]]
+        if not flights:
+            cov_ci[nom] = (None, None)
+            continue
         boots = []
         for _ in range(1000):
             pick = rng.integers(0, len(flights), len(flights))
@@ -383,8 +397,8 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
         g = d[d["fault_type"] == ft]
         by_type.append({
             "fault_type": ft,
-            "twin_delay_s": float(g["twin_delay_s"].median()),
-            "ml_delay_s": float(g["ml_delay_s"].median()),
+            "twin_delay_s": _num(g["twin_delay_s"].median()),
+            "ml_delay_s": _num(g["ml_delay_s"].median()),
             "twin_diag_acc": float(g["twin_diag_ok"].mean()),
         })
     med = lambda xs: float(np.median(xs)) if xs else None
@@ -393,15 +407,16 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
         "detection": _ci(int(d["twin_detected"].sum()), len(d)),
         "diagnosis_accuracy": float(d["twin_diag_ok"].mean()),
         "diagnosis": _ci(int(d["twin_diag_ok"].sum()), len(d)),
-        "median_delay_s": float(d["twin_delay_s"].median()),
-        "ml_median_delay_s": float(d["ml_delay_s"].median()),
+        "median_delay_s": _num(d["twin_delay_s"].median()),
+        "ml_median_delay_s": _num(d["ml_delay_s"].median()),
         "false_alarms_per_fh": twin_fa["per_fh"],
         "false_alarms": twin_fa,
-        "health_mae": float(np.mean(h_err)),
+        "health_mae": float(np.mean(h_err)) if h_err else None,
         "coverage": [{"nominal": k, "empirical": float(np.mean(v)), "ci95": cov_ci[k]} for k, v in cover.items()],
         "n_rul_points": len(cover[90]),
         "rul_median_abs_err_s": {"twin": med(rul_twin_err), "linear": med(rul_lin_err)},
-        "alpha_lambda": {"alpha": ALPHA, "twin": float(np.mean(alpha_twin)), "linear": float(np.mean(alpha_lin))},
+        "alpha_lambda": {"alpha": ALPHA, "twin": float(np.mean(alpha_twin)) if alpha_twin else None,
+                         "linear": float(np.mean(alpha_lin)) if alpha_lin else None},
         "by_type": by_type,
         "health_traces": h_trace,
         "rul_fans": fan,
@@ -415,12 +430,29 @@ def _inputs_mtime():
     return max(p.stat().st_mtime for p in paths if p.exists())
 
 
+def _clean(o):
+    """Recursively replace NaN/inf with None so the cache is strict JSON."""
+    if isinstance(o, dict):
+        return {k: _clean(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_clean(v) for v in o]
+    if isinstance(o, (float, np.floating)) and not np.isfinite(o):
+        return None
+    return o
+
+
+def _dump(obj, path):
+    with open(path, "w") as f:
+        json.dump(_clean(obj), f, allow_nan=False)
+
+
 def load_or_build(rebuild=False):
     if not rebuild and CACHE_PATH.exists() and CACHE_PATH.stat().st_mtime > _inputs_mtime():
-        return json.load(open(CACHE_PATH))
+        with open(CACHE_PATH) as f:
+            return json.load(f)
     report = build_report("test")
     CACHE_PATH.parent.mkdir(exist_ok=True)
-    json.dump(report, open(CACHE_PATH, "w"))
+    _dump(report, CACHE_PATH)
     return report
 
 
@@ -429,7 +461,7 @@ if __name__ == "__main__":
     if "--dev" in sys.argv:
         # development evaluation on val_fault: safe to look at while tuning
         r = build_report("dev")
-        json.dump(r, open(ROOT / "cache" / "results_dev.json", "w"))
+        _dump(r, ROOT / "cache" / "results_dev.json")
     else:
         r = load_or_build(rebuild=True)
     twin = {k: v for k, v in r["twin"].items() if k not in ("health_traces", "rul_fans")}

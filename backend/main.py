@@ -9,6 +9,8 @@ Index -> alert -> RUL -> fault diagnosis -> Go/No-Go); nothing is mocked.
 """
 import asyncio
 import json
+import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
@@ -18,7 +20,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from aerotwin.diagnosis.fault_diagnosis import FAULT_ACTIONS, FAULT_LABELS
 from aerotwin.evaluation.report import load_or_build
@@ -28,6 +30,7 @@ from aerotwin.copilot import service as copilot
 from aerotwin.copilot.evidence import Evidence
 from aerotwin.copilot.llm import load_env_file
 
+log = logging.getLogger("aerotwin.api")
 ROOT = Path(__file__).parent.parent
 DIST = ROOT / "dashboard" / "dist"
 
@@ -48,12 +51,22 @@ FLEET = [
 ]
 
 _state = {}
+# run_scenario is CPU/torch heavy and seeds shared RNG state: run one at a time
+_sim_lock = threading.Lock()
+
+
+def _read_json(path):
+    with open(path) as f:
+        return json.load(f)
 
 
 def _truth(split, mission_id):
     if split != "test_fault":
         return {"fault_type": None}
-    r = _state["fault_log"].loc[mission_id]
+    try:
+        r = _state["fault_log"].loc[mission_id]
+    except KeyError:
+        raise HTTPException(404, "Mission not found in fault log")
     return {"fault_type": r["fault_type"], "fault_start_t": float(r["fault_start_t"]),
             "failure_t": float(r["failure_t"]), "rate": float(r["severity"])}
 
@@ -92,12 +105,14 @@ async def lifespan(app):
     _state["report"] = load_or_build()
     gap_path = ROOT / "cache" / "gap_study.json"
     _state["evidence"] = Evidence(FLEET, _state["timelines"], bundle.cfg, _state["report"],
-                                  json.load(open(gap_path)) if gap_path.exists() else None)
+                                  _read_json(gap_path) if gap_path.exists() else None)
     yield
 
 
 app = FastAPI(title="AeroTwin Digital Twin API", version="2.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Production is same-origin and Vite proxies /api in dev, so only the dev server origin is allowed
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+                   allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 
 
 @app.get("/api/meta")
@@ -143,7 +158,12 @@ def mission(split: str, mission_id: str):
         df = load_mission_df(split, mission_id)
     except KeyError:
         raise HTTPException(404, "Mission not found")
-    return {"truth": _truth(split, mission_id), "timeline": compute_mission_timeline(df, get_bundle())}
+    truth = _truth(split, mission_id)
+    try:
+        timeline = compute_mission_timeline(df, get_bundle())
+    except ValueError as e:  # e.g. mission shorter than one analysis window
+        raise HTTPException(422, str(e))
+    return {"truth": truth, "timeline": timeline}
 
 
 @app.get("/api/results")
@@ -152,10 +172,10 @@ def results():
 
 
 class CopilotQuestion(BaseModel):
-    question: str
-    aircraft_id: Optional[str] = None
-    t: Optional[float] = None
-    history: list = []
+    question: str = Field(max_length=4000)
+    aircraft_id: Optional[str] = Field(default=None, max_length=32)
+    t: Optional[float] = Field(default=None, ge=0, le=86400, allow_inf_nan=False)
+    history: list[dict] = Field(default_factory=list, max_length=40)
     force_offline: bool = False
 
 
@@ -179,27 +199,33 @@ def gap_study():
     path = ROOT / "cache" / "gap_study.json"
     if not path.exists():
         raise HTTPException(404, "Run `python3 -m aerotwin.evaluation.gap_study` to build the reality-gap study.")
-    return json.load(open(path))
+    return _read_json(path)
 
 
 class Scenario(BaseModel):
     fault_type: Optional[str] = None
     severity: str = "moderate"
-    onset_s: int = 1200
+    onset_s: int = Field(default=1200, ge=0, le=86400)
     profile: str = "standard"
-    seed: Optional[int] = None
-    gap: float = 0.0
+    seed: Optional[int] = Field(default=None, ge=0, le=2**31 - 1)
+    gap: float = Field(default=0.0, ge=0.0, le=10.0, allow_inf_nan=False)
     calibrate: bool = False
 
 
 @app.post("/api/simulate")
 async def simulate(s: Scenario):
+    def run():
+        with _sim_lock:
+            return run_scenario(s.fault_type or None, s.severity, s.onset_s, s.profile, s.seed, s.gap, s.calibrate)
+
     try:
         # CPU-bound (~0.5 s); keep the event loop free for other requests
-        return await asyncio.to_thread(run_scenario, s.fault_type or None, s.severity, s.onset_s, s.profile, s.seed,
-                                       s.gap, s.calibrate)
+        return await asyncio.to_thread(run)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    except Exception:
+        log.exception("simulation failed")
+        raise HTTPException(500, "Simulation failed; see server log")
 
 
 @app.websocket("/api/stream/{airframe_id}")
@@ -229,8 +255,12 @@ if DIST.exists():
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
-        f = DIST / path
-        return FileResponse(f if path and f.is_file() else DIST / "index.html")
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(404, "Unknown API route")
+        f = (DIST / path).resolve()
+        if path and f.is_file() and f.is_relative_to(DIST.resolve()):
+            return FileResponse(f)
+        return FileResponse(DIST / "index.html")
 else:
     @app.get("/", include_in_schema=False)
     def root():

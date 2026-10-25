@@ -12,7 +12,7 @@ PORT=8000
 echo -e "${BLUE}✈  AeroTwin – Aero-Piston Engine Digital Twin${NC}"
 
 # 1. Python dependencies
-if ! python3 -c "import fastapi, uvicorn, sklearn, torch, yaml, pyarrow, joblib, scipy" 2>/dev/null; then
+if ! python3 -c "import fastapi, uvicorn, sklearn, torch, yaml, pyarrow, joblib, scipy, anthropic, google.genai" 2>/dev/null; then
   echo -e "${YELLOW}Installing Python dependencies…${NC}"
   python3 -m pip install -r requirements.txt
 fi
@@ -25,7 +25,8 @@ if [ ! -f data/fault_log.csv ] || [ ! -f data/train_healthy.parquet ] || [ ! -f 
 fi
 
 # 3. Trained models (committed; retrain if missing or with --retrain)
-if [ ! -f models/metadata.json ] || [ "$1" == "--retrain" ]; then
+RETRAIN=0; for a in "$@"; do [ "$a" == "--retrain" ] && RETRAIN=1; done
+if [ ! -f models/metadata.json ] || [ "$RETRAIN" == "1" ]; then
   echo -e "${YELLOW}Training models (a few minutes)…${NC}"
   python3 -m aerotwin.evaluation.train_models
 fi
@@ -36,7 +37,7 @@ if [ ! -d dashboard/node_modules ]; then
   (cd dashboard && npm install)
 fi
 
-if [ "$1" == "--dev" ]; then
+if [[ " $* " == *" --dev "* ]]; then
   python3 -m uvicorn backend.main:app --reload --port $PORT &
   BACKEND_PID=$!
   (cd dashboard && npm run dev) &
@@ -44,12 +45,13 @@ if [ "$1" == "--dev" ]; then
   trap 'echo -e "\n${BLUE}Shutting down…${NC}"; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit 0' SIGINT SIGTERM
   echo -e "${GREEN}✓ Dev mode:${NC} dashboard http://localhost:5173 · API http://localhost:$PORT/docs"
   wait
+  exit $?
 fi
 
 # 5. Production build of the dashboard (only when sources changed)
 if [ ! -f dashboard/dist/index.html ] || [ -n "$(find dashboard/src dashboard/index.html -newer dashboard/dist/index.html 2>/dev/null)" ]; then
   echo -e "${YELLOW}Building dashboard…${NC}"
-  (cd dashboard && npm run build >/dev/null)
+  (cd dashboard && npm run build >/dev/null) || { echo "Dashboard build failed; re-run: cd dashboard && npm run build"; exit 1; }
 fi
 
 # 6. Validation cache is built automatically on first start (~1 min, once)

@@ -66,7 +66,7 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
     if first_alert and first_alert["diagnosis"]:
         result["diagnosed_as"] = first_alert["diagnosis"]["fault"]
         result["cylinder"] = first_alert["diagnosis"]["cylinder"]
-    if fault_type and first_alert:
+    if fault_type and first_alert and first_alert["t"] >= onset_s:  # a pre-onset alarm is a false alarm, not a detection
         result["detection_delay_s"] = first_alert["t"] - onset_s
         result["lead_time_s"] = truth["failure_t"] - first_alert["t"]
 
@@ -75,7 +75,7 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
     result["twin_detect_t"] = twin_det["t"] if twin_det else None
     if twin_det:
         result["twin_diagnosis"] = twin_det["twin"]["map"]
-        if fault_type:
+        if fault_type and twin_det["t"] >= onset_s:
             result["twin_delay_s"] = twin_det["t"] - onset_s
             result["twin_lead_time_s"] = truth["failure_t"] - twin_det["t"]
 

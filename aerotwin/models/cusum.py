@@ -45,10 +45,15 @@ def calibrate(statistics, margin=1.1):
 
 
 def load_or_calibrate(path, compute_statistics):
-    """Cached threshold in models/cusum.json; computed once from healthy
-    validation data if absent."""
-    if path.exists():
-        return json.load(open(path))["h"]
+    """Cached threshold in models/cusum.json; computed from healthy validation
+    data if absent or older than the trained models (the threshold depends on
+    the models' residual pipeline, so retraining makes it stale)."""
+    meta = path.parent / "metadata.json"
+    stale = meta.exists() and path.exists() and path.stat().st_mtime < meta.stat().st_mtime
+    if path.exists() and not stale:
+        with open(path) as f:
+            return json.load(f)["h"]
     h = calibrate(compute_statistics())
-    json.dump({"k": K, "h": h, "calibrated_on": "val_healthy"}, open(path, "w"), indent=2)
+    with open(path, "w") as f:
+        json.dump({"k": K, "h": h, "calibrated_on": "val_healthy"}, f, indent=2)
     return h

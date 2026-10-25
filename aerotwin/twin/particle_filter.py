@@ -109,6 +109,9 @@ class HealthParticleFilter:
         self.logr[onset] = rng.uniform(*self.rate_bounds, onset.sum())
         a = self.active
         self.logr[a] += rng.normal(0, self.rate_walk, a.sum())
+        # the random walk must not carry a rate outside the prior's support
+        # (1e-6 /s gives a million-second RUL, 1 /s a zero one)
+        np.clip(self.logr, *self.rate_bounds, out=self.logr)
         self.h[a] -= np.exp(self.logr[a]) + rng.normal(0, self.health_walk, a.sum())
         np.clip(self.h, 0.0, 1.0, out=self.h)
 
@@ -156,6 +159,7 @@ class HealthParticleFilter:
             # roughening keeps particle diversity after duplication
             act = self.active[sl]
             self.logr[sl][act] += self.rng.normal(0, 0.05, act.sum())
+            np.clip(self.logr[sl], *self.rate_bounds, out=self.logr[sl])
             self.logw[m] = -np.log(self.n)
 
     # ---------------------------------------------------------------------
