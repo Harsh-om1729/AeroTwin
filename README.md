@@ -207,6 +207,7 @@ start evaluates the 120 test flights (~3 min), cached afterwards. Later starts t
 * Dashboard: http://localhost:8000
 * Interactive API docs (Swagger): http://localhost:8000/docs
 * Developer mode with hot reload: `./run.sh --dev` → http://localhost:5173
+* Stop everything: `./stop.sh` from the project folder, or Ctrl+C. Forgot? `./run.sh` clears an old copy by itself.
 * Retrain the models: `./run.sh --retrain`
 * Tests: `python3 -m pytest -q` (145 tests, one documented expected failure)
 

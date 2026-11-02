@@ -11,6 +11,9 @@ PORT=8000
 
 echo -e "${BLUE}✈  AeroTwin – Aero-Piston Engine Digital Twin${NC}"
 
+# 0. A copy left running from last time would block the port: clear it
+./stop.sh --quiet
+
 # 1. Python dependencies
 if ! python3 -c "import fastapi, uvicorn, sklearn, torch, yaml, pyarrow, joblib, scipy, anthropic, google.genai" 2>/dev/null; then
   echo -e "${YELLOW}Installing Python dependencies…${NC}"
