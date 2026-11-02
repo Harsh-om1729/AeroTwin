@@ -50,6 +50,11 @@ def test_copilot_offline_answers(client):
     assert r.status_code == 200 and r.json()["mode"] == "offline"
 
 
+def test_real_results_is_404_or_has_a_test_fold(client):
+    r = client.get("/api/real-results")
+    assert r.status_code == 404 or "test" in r.json()
+
+
 def test_cors_not_wildcard(client):
     r = client.get("/api/meta", headers={"Origin": "https://evil.example"})
     assert r.headers.get("access-control-allow-origin") != "*"

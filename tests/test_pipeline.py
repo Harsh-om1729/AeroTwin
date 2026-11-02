@@ -55,7 +55,7 @@ def test_injected_fault_detected_and_diagnosed(fault):
 
 @pytest.mark.parametrize("fault", [
     *ALL_FAULTS[:4],
-    # Known ML-ensemble weakness, also visible on the test split (11/12 bearing
+    # Known ML-ensemble weakness, also visible on the test split (10/12 bearing
     # faults caught in time): a vibration-only fault moves one residual
     # channel, so the fused score can cross the alert threshold late.
     pytest.param("abnormal_vibration", marks=pytest.mark.xfail(

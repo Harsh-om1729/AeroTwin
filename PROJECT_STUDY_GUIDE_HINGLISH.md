@@ -232,7 +232,7 @@ Fault ek random time (onset) par shuru hota hai aur health ghatti hai:
 
 **Failure time** formula se exact nikalta hai (`compute_failure_t`) – isse hum "warning kitne pehle di" naap sakte hain.
 
-### 5.5 Dataset v2.0 – `generate_dataset.py` (seeded, reproducible)
+### 5.5 Dataset v2.1 – `generate_dataset.py` (seeded, reproducible)
 
 | Split | Flights | Kis kaam | Rule |
 |---|---|---|---|
@@ -296,7 +296,7 @@ File: `aerotwin/models/fusion.py`, `aerotwin/health/health_index.py`.
 4. **Alert:** HI < 50 lagataar **8 windows** (80 second) → alert. **Degrading:** HI < 80 lagataar 5 windows.
 
 **WHY 3 models (ensemble)?** Har model alag galti karta hai. Test par false-alarm **events** (80 healthy flight-hours mein):
-Isolation Forest **10**, PCA **33**, LSTM **78**, **Fused ensemble sirf 1**. Ye "ablation study" hai.
+Isolation Forest **13**, PCA **32**, LSTM **77**, **Fused ensemble sirf 2**. Ye "ablation study" hai.
 
 > Note: HI asal mein ek "kitna ajeeb hai" (surprise) score hai, physical health nahi. Physical health Bayesian twin deta hai (section 11).
 
@@ -313,7 +313,7 @@ Isolation Forest **10**, PCA **33**, LSTM **78**, **Fused ensemble sirf 1**. Ye 
 - Ek EGT neeche + vibration upar → misfire (wahi cylinder)
 - Sirf vibration upar → bearing
 
-**Result (test):** fault type **60/60**, cylinder **24/24** sahi. (Honest note: rules pehle purane dataset par develop hue,
+**Result (test):** fault type **58/60**, cylinder **24/24** sahi. (Honest note: rules pehle purane dataset par develop hue,
 phir freeze karke dev split par check kiye, phir naya test set ek baar evaluate.)
 
 ---
@@ -354,12 +354,12 @@ P(failure within next 60-min mission).
 
 | | Bayesian twin | ML ensemble |
 |---|---|---|
-| Faults detected | **60/60** | 59/60 |
-| Diagnosis (type + cylinder) | **60/60** | 60/60 |
-| False-alarm events (80.3 h) | **0** | 1 |
-| Median detection delay | **37 s** | 107 s |
+| Faults detected | **60/60** | 58/60 |
+| Diagnosis (type + cylinder) | **60/60** | 58/60 |
+| False-alarm events (80.3 h) | **0** | 2 |
+| Median detection delay | **37.5 s** | 108 s |
 | Hidden health error (MAE) | **0.006** | – |
-| 90% RUL interval mein asli failure time | **90.0%** (95% CI 87.7–92.0%) – perfect calibration! | – |
+| 90% RUL interval mein asli failure time | **91.1%** (95% CI 88.8–92.9%) – achhi calibration | – |
 
 > **Honest note:** Twin wahi physics equations use karta hai jo simulator ne data banane mein use kiye. Isliye ye
 > results "upper bound" hain. Section 17 mein dekha ki twin galat ho to kya hota hai.
@@ -374,7 +374,7 @@ P(failure within next 60-min mission).
 1. **Linear trend** (`aerotwin/health/rul.py`): HI ki line ko 50 tak extend karo. Simple par weak.
 2. **Particle filter RUL:** har particle `(health − failure_limit) / rate` → poori distribution → median + 90% interval.
 
-**Result:** Twin ka median error **68 s**, linear ka **262 s**. ±20% ke andar: twin **33%**, linear **1.2%**.
+**Result:** Twin ka median error **56 s**, linear ka **263 s**. ±20% ke andar: twin **36%**, linear **0.8%**.
 (Fair comparison nahi – linear HI=50 tak ka time nikalta hai, truth physical failure hai. Isliye "x guna better" claim nahi karte.)
 
 ---
@@ -396,7 +396,7 @@ P(failure within next 60-min mission).
 ## 14. Evaluation: results kaise naape
 
 - **Detection:** fault onset ke baad aur failure se pehle alert aaya? (aur ab sirf **naya** alert count hota hai)
-- **Lead time:** failure se kitna pehle warning (ML median **3.6 min**; lubrication ~16 min, misfire ~10 s kyunki misfire bahut tez hai)
+- **Lead time:** failure se kitna pehle warning (ML median **5.1 min**; lubrication ~16 min, misfire ~10 s kyunki misfire bahut tez hai)
 - **False alarms:** healthy time mein alarm **events** per flight-hour + **95% confidence interval**
 - **Confidence intervals:** 60/60 ka matlab "100%" nahi – statistically "≥ 94% (95% CI)" kehna chahiye (Clopper-Pearson)
 - Sab kuch `aerotwin/evaluation/report.py` se recompute hota hai (`cache/results.json`), haath se nahi likha.
@@ -434,7 +434,7 @@ Example: "Agar oil pressure healthy hota to fused anomaly percentile 97 se 49 pa
 **sensor level** par kaam karta hai.
 
 **Validation (sabse important):** Kya explanation **sahi** hai? Top sensor = fault ka physical sensor?
-Ensemble **60/60**, LSTM 60/60, PCA 58/60, IF 54/60. Ek false alarm bhi explain hua: CHT 1 ka noise blip (74%).
+Ensemble **58/58**, LSTM 58/58, PCA 57/58, IF 53/58. Do false alarms bhi explain hue: CHT 4 blip (61%) aur CHT 1 blip (74%).
 
 ---
 
@@ -448,8 +448,8 @@ Ensemble **60/60**, LSTM 60/60, PCA 58/60, IF 54/60. Ek false alarm bhi explain 
 **WHY:** Agar twin bilkul sahi ho, to residual sirf white noise hai – is case mein CUSUM **theoretically optimal** hai.
 Fair comparison ke liye zaroori.
 
-**Matched comparison** (same false-alarm rate ≤ 0.05/FH par): Bayesian twin **45 s**, CUSUM **54 s**, ML ensemble is rule ke
-saath reach nahi karta (apne 8-window rule ke saath 107 s). **Matlab: perfect twin par simple CUSUM bhi utna hi achha hai.**
+**Matched comparison** (same false-alarm rate ≤ 0.05/FH par): Bayesian twin **46 s**, CUSUM **54 s**, ML ensemble is rule ke
+saath reach nahi karta (apne 8-window rule ke saath 108 s). **Matlab: perfect twin par simple CUSUM bhi utna hi achha hai.**
 
 ### 17.2 Reality-Gap study – `aerotwin/simulator/variation.py`, `aerotwin/evaluation/gap_study.py`
 
@@ -555,7 +555,7 @@ isi residual ko analyse karte hain.
 A: Real fleets mein fault data bahut kam hota hai. Models sirf healthy data se "normal" seekhte hain.
 
 **Q: Teen ML models kyun?**
-A: Har model alag galti karta hai. Akele 10/33/78 false-alarm events, milakar sirf 1.
+A: Har model alag galti karta hai. Akele 13/32/77 false-alarm events, milakar sirf 2.
 
 **Q: Particle filter kyun, Kalman filter kyun nahi?**
 A: Problem non-linear hai (thermal lag), fault onset ek jump hai, aur hypotheses discrete hain (kaunsa fault, kaunsa cylinder).
@@ -565,10 +565,10 @@ Kalman linear-Gaussian maanta hai.
 A: Sensor physics same hai – ye main limitation hai. Par degradation law, rate aur onset nahi pata. Isliye reality-gap study kiya.
 
 **Q: Uncertainty sahi hai ye kaise pata?**
-A: Coverage test: 90% interval ne asli failure time 90.0% baar pakda (95% CI 87.7–92.0%).
+A: Coverage test: 90% interval ne asli failure time 91.1% baar pakda (95% CI 88.8–92.9%).
 
 **Q: Simple CUSUM kyun nahi?**
-A: Test kiya! Perfect twin par CUSUM utna hi achha (54 s vs 45 s). Par reality gap 0.05 par hi fail – sabse fragile.
+A: Test kiya! Perfect twin par CUSUM utna hi achha (54 s vs 46 s). Par reality gap 0.05 par hi fail – sabse fragile.
 
 **Q: AI copilot galat data bana dega (hallucinate)?**
 A: Sirf 6 read-only tools se data milta hai, har number tool se aana chahiye, aur ye kabhi decision nahi leta. Har answer ke
@@ -647,3 +647,17 @@ A: Calibration ke bina nahi. Twin ke parameters real recordings se fit karne hon
 
 > **Last tip:** Presentation se pehle ek baar khud `./run.sh` chala kar har page dekhiye, aur section 21 ke sawal zor se
 > bol kar practice kariye. Jo cheez aap simple shabdon mein samjha sakte ho, wahi aapko sach mein aati hai. All the best! ✈️
+
+---
+
+## Real flights (NGAFID) – update
+
+Simulated results upper bound hain, isliye detectors ko **real Cessna 172 flights** par bhi test kiya (NGAFID dataset, Rotax 912 nahi).
+Physics twin is engine par laagu nahi hota, isliye ek **learned healthy baseline** banaya (`aerotwin/real_engine/sim2real.py`).
+
+- **Fused ensemble: AUC 0.51** (95% CI 0.49–0.53) – yaani coin flip jaisa. Development fold par 0.54 tha, test par tika nahi.
+- **Low oil pressure: AUC 0.68** (95% CI 0.66–0.70) – test par tika, par shayad repair ke saath oil change hone ki wajah se. Isse validated detector mat kehna.
+- **Supervised training (labels ke saath):** gradient boosting **AUC 0.74**, par oil pressure hatane par sirf **0.56**. Yaani model zyadatar ek hi sensor padh raha hai.
+- Test fold dekhne ke baad kuch tune nahi kiya. Supervised models us fold ka doosra use hain, ye bhi batana.
+
+**Teacher ko kaise bolna hai:** "Simulation par numbers bahut achhe hain, par real flights par ensemble chance level par tha. Maintenance issues in sensors ko bahut kam badalte hain, aur pilot aur mausam bahut zyada."

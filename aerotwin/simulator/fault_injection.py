@@ -22,6 +22,10 @@ CRITICAL_HEALTH = {
     "overheating_trend": 0.40,    # combined cooling+oil, each at rate/2
 }
 
+# Cylinder each per-cylinder fault is injected on.
+FAULT_CYLINDER = {"injector_abnormality": 1, "misfire": 2}
+
+
 def compute_failure_t(fault_type, fault_start_t, severity_rate, critical_health=None):
     """Analytically inverts `degrade()` to find the time t at which the
     relevant health channel for `fault_type` first crosses its critical
@@ -58,9 +62,9 @@ class FaultInjector:
         elif self.fault_type == "cooling_degradation":
             health["cooling"] = degrade(t, self.fault_start_t, self.rate)
         elif self.fault_type == "injector_abnormality":
-            health["injector"][0] = degrade(t, self.fault_start_t, self.rate)
+            health["injector"][FAULT_CYLINDER["injector_abnormality"] - 1] = degrade(t, self.fault_start_t, self.rate)
         elif self.fault_type == "misfire":
-            health["ignition"][1] = degrade(t, self.fault_start_t, self.rate, shape="lin")
+            health["ignition"][FAULT_CYLINDER["misfire"] - 1] = degrade(t, self.fault_start_t, self.rate, shape="lin")
         elif self.fault_type == "abnormal_vibration":
             health["bearing"] = degrade(t, self.fault_start_t, self.rate)
         elif self.fault_type == "overheating_trend":

@@ -56,6 +56,12 @@ def advise(row, cfg, planned_mission_s=3600.0):
     if limits:
         decision = "NO-GO"
         reasons += limits
+    elif row.get("limit_breach"):
+        # a redline crossed earlier this flight still grounds the aircraft for
+        # the NEXT mission, even though the reading has since recovered
+        b = row["limit_breach"]
+        decision = "NO-GO"
+        reasons.append(f"Redline exceeded at T+{int(b['t']) // 60:02d}:{int(b['t']) % 60:02d} ({b['reason']}) – inspect before next mission")
 
     if row.get("alert"):
         decision = "NO-GO"

@@ -11,13 +11,11 @@ import time
 
 import numpy as np
 
-from aerotwin.simulator.fault_injection import FaultInjector, compute_failure_t, degrade
-from aerotwin.simulator.generate_dataset import generate_mission_data, load_config
+from aerotwin.simulator.fault_injection import FAULT_CYLINDER, FaultInjector, compute_failure_t, degrade
+from aerotwin.simulator.generate_dataset import FAULTS, generate_mission_data, load_config
 from aerotwin.twin.particle_filter import HealthParticleFilter
 
-BASE = {"lubrication": 0.001, "cooling_degradation": 0.002, "injector_abnormality": 0.003,
-        "misfire": 0.005, "abnormal_vibration": 0.002}
-TRUE_CYL = {"injector_abnormality": 1, "misfire": 2}
+BASE = dict(FAULTS)
 
 
 def tuning_flights(n_per_fault=2, n_healthy=3, seed=424242):
@@ -52,7 +50,7 @@ def evaluate(params, flights, cfg):
             continue
         stats["delay"].append(post[0] - t0)
         m = res[post[0]]["map"]
-        stats["diag"].append(m["fault"] == ft and m["cylinder"] == TRUE_CYL.get(ft))
+        stats["diag"].append(m["fault"] == ft and m["cylinder"] == FAULT_CYLINDER.get(ft))
         shape = "lin" if ft == "misfire" else "exp"
         for t, s in res.items():
             if post[0] <= t < fail:
@@ -75,9 +73,9 @@ if __name__ == "__main__":
     cfg = load_config()
     flights = tuning_flights()
     grid = {
-        "health_walk": [2e-4, 2e-3, 5e-3],
-        "rate_walk": [0.02, 0.1],
-        "p_onset": [0.002, 0.01],
+        "health_walk": [2e-4, 1e-3, 5e-3],
+        "rate_walk": [0.02, 0.05, 0.1],
+        "p_onset": [0.002, 0.005, 0.01],
     }
     for combo in itertools.product(*grid.values()):
         params = dict(zip(grid, combo))

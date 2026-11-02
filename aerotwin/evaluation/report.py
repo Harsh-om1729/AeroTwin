@@ -22,13 +22,11 @@ from aerotwin.evaluation.metrics import compute_metrics
 from aerotwin.features.residuals import compute_residuals
 from aerotwin.health.health_index import alert_logic, calibrate_p, compute_health_index
 from aerotwin.inference.replay import DATA_DIR, ROOT, compute_mission_timeline, get_bundle, load_mission_df
-from aerotwin.simulator.fault_injection import degrade
+from aerotwin.simulator.fault_injection import FAULT_CYLINDER, degrade
 
 CACHE_PATH = ROOT / "cache" / "results.json"
 MISSION_S = 3600
 FAULT_TYPES = ["lubrication", "cooling_degradation", "injector_abnormality", "misfire", "abnormal_vibration"]
-# Cylinder each fault mode is injected on (see aerotwin.simulator.fault_injection)
-TRUE_CYLINDER = {"injector_abnormality": 1, "misfire": 2}
 TWIN_P = 0.95          # Bayesian twin declares a fault when P(degraded) exceeds this
 ALPHA = 0.2            # alpha-lambda accuracy band: prediction within +-20 % of true RUL
 
@@ -125,9 +123,9 @@ def build_report(split="test"):
         diag = first_alert["diagnosis"] if first_alert else None
         pred = diag["fault"] if diag else "none"
         confusion[r["fault_type"]][pred] += 1
-        if r["fault_type"] in TRUE_CYLINDER and pred == r["fault_type"]:
+        if r["fault_type"] in FAULT_CYLINDER and pred == r["fault_type"]:
             cyl_n += 1
-            cyl_ok += int(diag["cylinder"] == TRUE_CYLINDER[r["fault_type"]])
+            cyl_ok += int(diag["cylinder"] == FAULT_CYLINDER[r["fault_type"]])
         d = det.set_index("mission_id").loc[mid]
         per_mission.append({
             "mission_id": mid,
@@ -182,6 +180,10 @@ def build_report(split="test"):
             "cylinder": _ci(cyl_ok, cyl_n),
             "n_fault_missions": int(len(fault_log)),
             "n_healthy_missions": len(healthy_ids),
+            # a healthy engine must never be grounded: Go/No-Go false alarms,
+            # which the detector false-alarm metrics above do not cover
+            "healthy_flights_no_go": sum(any(x["advisor"]["decision"] == "NO-GO" for x in timelines[m])
+                                         for m in healthy_ids),
             "healthy_flight_hours": float(sum(min(truth["fault_start_t"].get(m, MISSION_S), MISSION_S)
                                               for m in timelines) / 3600),
             "overall_detection_rate": float(det["detected"].mean()),
@@ -240,12 +242,10 @@ def _amoc(timelines, truth, healthy_ids, n_consec=3, target_far=0.05):
             dets, delays = [], []
             for mid, r in truth.iterrows():
                 p = preds[mid]
-                # credit only a NEW alarm after onset (not one already on before the fault)
-                hit = next((t for k, (t, a) in enumerate(p)
-                            if a and (k == 0 or not p[k - 1][1]) and r["fault_start_t"] <= t < r["failure_t"]), None)
-                dets.append(hit is not None)
-                if hit is not None:
-                    delays.append(hit - r["fault_start_t"])
+                i = first_new_alarm_index([a for _, a in p], [t for t, _ in p], r["fault_start_t"], r["failure_t"])
+                dets.append(i is not None)
+                if i is not None:
+                    delays.append(p[i][0] - r["fault_start_t"])
             pts.append({"threshold": round(float(thr), 4), "far": fa["per_fh"], "events": fa["events"],
                         "detection": float(np.mean(dets)),
                         "median_delay_s": float(np.median(delays)) if delays else None})
@@ -334,7 +334,7 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
             "twin_delay_s": det["t"] - t0 if det else None,
             "ml_delay_s": ml_alert[mid] - t0 if ml_alert[mid] is not None else None,
             "twin_detected": det is not None,
-            "twin_diag_ok": bool(m and m["fault"] == ft and m["cylinder"] == TRUE_CYLINDER.get(ft)),
+            "twin_diag_ok": bool(m and m["fault"] == ft and m["cylinder"] == FAULT_CYLINDER.get(ft)),
         })
         if not det:
             continue
@@ -423,7 +423,7 @@ def _evaluate_twin(timelines, truth, healthy_ids, per_mission):
     }
 
 
-def _inputs_mtime():
+def inputs_mtime():
     """Newest of the trained models and the evaluation data: the cache is
     stale if either was regenerated after it was written."""
     paths = [ROOT / "models" / "metadata.json"] + list(DATA_DIR.glob("*.parquet")) + list(DATA_DIR.glob("*.csv"))
@@ -447,7 +447,7 @@ def _dump(obj, path):
 
 
 def load_or_build(rebuild=False):
-    if not rebuild and CACHE_PATH.exists() and CACHE_PATH.stat().st_mtime > _inputs_mtime():
+    if not rebuild and CACHE_PATH.exists() and CACHE_PATH.stat().st_mtime > inputs_mtime():
         with open(CACHE_PATH) as f:
             return json.load(f)
     report = build_report("test")

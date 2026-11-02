@@ -115,10 +115,12 @@ export default function Fleet({ fleet, results, onOpen }) {
                 <>
                   <Radar size={12} style={{ verticalAlign: -1, marginRight: 4 }} color="var(--crit)" />
                   <b>{f.diagnosis.label}{f.diagnosis.cylinder ? ` · cyl ${f.diagnosis.cylinder}` : ''}</b>
-                  <br />Alert at T+{clock(f.first_alert_t)}
+                  {f.first_alert_t != null && <><br />Alert at T+{clock(f.first_alert_t)}</>}
                 </>
               ) : (
-                <>All residuals within healthy bounds.<br /><span className="dim">No fault signature detected.</span></>
+                f.decision === 'GO'
+                  ? <>All residuals within healthy bounds.<br /><span className="dim">No fault signature detected.</span></>
+                  : <>No rule-based fault signature.<br /><span className="dim">Open the replay for the advisor&apos;s reasons.</span></>
               )}
             </div>
             <div className="fc-open">Open replay <ChevronRight size={12} style={{ verticalAlign: -2 }} /></div>

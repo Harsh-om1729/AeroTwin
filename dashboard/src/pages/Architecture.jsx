@@ -25,7 +25,7 @@ const DATA = [
   ['Validation (healthy)', 'seed block 2', '28 flights', 'Standard profile', 'Fusion percentiles, HI calibration'],
   ['Development (fault)', 'seed block 4', '20 flights', '5 fault types × 4', 'The only fault data used while developing'],
   ['Test (healthy)', 'seed block 3', '60 flights', 'Hot weather (+35 °C)', 'False-alarm events (final)'],
-  ['Test (fault)', 'seed block 5', '60 flights', '5 fault types × 12', 'Detection, diagnosis, RUL (final, evaluated once)'],
+  ['Test (fault)', 'seed block 5', '60 flights', '5 fault types × 12', 'Detection, diagnosis, RUL (final, never tuned on)'],
 ];
 
 export default function Architecture({ meta }) {
@@ -90,12 +90,12 @@ export default function Architecture({ meta }) {
           <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-2)', fontSize: 13.5, lineHeight: 1.7 }}>
             <li><b style={{ color: 'var(--text)' }}>Residuals, not raw sensors.</b> A climb makes CHT rise in a healthy engine too; comparing against a lagged physics twin removes that, so models see only unexplained behaviour.</li>
             <li><b style={{ color: 'var(--text)' }}>Trained on healthy data only.</b> Real fleets have few recorded failures, so detectors learn &quot;normal&quot; and flag deviations. They need no fault labels.</li>
-            <li><b style={{ color: 'var(--text)' }}>Ensemble with percentile fusion.</b> Three different model families make partly uncorrelated mistakes; averaging calibrated percentiles reduced false-alarm events from 10–78 per single model to 1 on the test split (see Validation).</li>
+            <li><b style={{ color: 'var(--text)' }}>Ensemble with percentile fusion.</b> Three different model families make partly uncorrelated mistakes; averaging calibrated percentiles reduced false-alarm events from 13–77 per single model to 2 on the test split (see Validation).</li>
             <li><b style={{ color: 'var(--text)' }}>Persistence rule.</b> An alert needs 8 consecutive windows (80 s) below HI 50, so single noisy windows never ground an aircraft.</li>
             <li><b style={{ color: 'var(--text)' }}>Grounded AI copilot.</b> A Claude tool-use assistant can only read the twin&apos;s outputs through six read-only tools, must cite them, and never overrides the Go/No-Go; if the API is unavailable an offline engine answers from the same evidence.</li>
             <li><b style={{ color: 'var(--text)' }}>Explainable AI, and checked.</b> Every flagged window gets a sensor-level counterfactual explanation: each sensor is reset to healthy, the three models are re-scored, and the drop in their raw anomaly score is that sensor&apos;s share of the evidence. The top-ranked sensor is then checked against the fault&apos;s physics on the test split.</li>
             <li><b style={{ color: 'var(--text)' }}>Physics-based diagnosis.</b> Fault isolation matches residual patterns to physical signatures, so it is explainable to a maintainer (&quot;EGT cyl 2 −5σ with vibration +2σ&quot;).</li>
-            <li><b style={{ color: 'var(--text)' }}>No leakage, seeded data.</b> Every split comes from a disjoint seed block, so the dataset is identical on every machine. Rules and thresholds were fixed on a development split; the test split is evaluated once. Ground-truth failure time is derived analytically from the fault model.</li>
+            <li><b style={{ color: 'var(--text)' }}>No leakage, seeded data.</b> Every split comes from a disjoint seed block, so the dataset is identical on every machine. Rules and thresholds were fixed on a development split and are never tuned on the test split. Ground-truth failure time is derived analytically from the fault model.</li>
           </ul>
         </div>
         <div className="panel">

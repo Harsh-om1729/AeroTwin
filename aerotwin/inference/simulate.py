@@ -8,16 +8,10 @@ import numpy as np
 
 from aerotwin.inference.replay import compute_mission_timeline, estimate_calibration, get_bundle
 from aerotwin.simulator.fault_injection import FaultInjector, compute_failure_t
-from aerotwin.simulator.generate_dataset import generate_mission_data
+from aerotwin.simulator.generate_dataset import FAULTS, generate_mission_data
 
-# Default degradation rates used to build the fault test set (generate_dataset)
-BASE_RATES = {
-    "lubrication": 0.001,
-    "cooling_degradation": 0.002,
-    "injector_abnormality": 0.003,
-    "misfire": 0.005,
-    "abnormal_vibration": 0.002,
-}
+# Default degradation rates used to build the fault test set
+BASE_RATES = dict(FAULTS)
 SEVERITY_MULT = {"mild": 0.5, "moderate": 1.0, "severe": 2.0}
 PROFILES = ["standard", "hot_weather", "high_altitude", "rapid_throttle"]
 
@@ -34,7 +28,9 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
     if severity not in SEVERITY_MULT:
         raise ValueError(f"severity must be one of {list(SEVERITY_MULT)}")
 
-    seed = int(np.random.randint(0, 1_000_000)) if seed is None else int(seed)
+    # a fresh generator: the global one is re-seeded below, so drawing from it
+    # would make each "random" flight a function of the previous seed
+    seed = int(np.random.default_rng().integers(0, 1_000_000)) if seed is None else int(seed)
     np.random.seed(seed)  # rapid_throttle profile jitter uses the global RNG
     onset_s = int(np.clip(onset_s, 300, 3000))
 
@@ -68,7 +64,8 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
         result["cylinder"] = first_alert["diagnosis"]["cylinder"]
     if fault_type and first_alert and first_alert["t"] >= onset_s:  # a pre-onset alarm is a false alarm, not a detection
         result["detection_delay_s"] = first_alert["t"] - onset_s
-        result["lead_time_s"] = truth["failure_t"] - first_alert["t"]
+        if first_alert["t"] < truth["failure_t"]:  # an alert after failure gives no warning
+            result["lead_time_s"] = truth["failure_t"] - first_alert["t"]
 
     # Bayesian health twin: first confident (P(degraded) > 0.95) detection
     twin_det = next((r for r in timeline if r["twin"]["p_degraded"] > 0.95), None)
@@ -77,7 +74,8 @@ def run_scenario(fault_type=None, severity="moderate", onset_s=1200, profile="st
         result["twin_diagnosis"] = twin_det["twin"]["map"]
         if fault_type and twin_det["t"] >= onset_s:
             result["twin_delay_s"] = twin_det["t"] - onset_s
-            result["twin_lead_time_s"] = truth["failure_t"] - twin_det["t"]
+            if twin_det["t"] < truth["failure_t"]:
+                result["twin_lead_time_s"] = truth["failure_t"] - twin_det["t"]
 
     cusum_hit = next((r for r in timeline if r["cusum_alarm"]), None)
     result["cusum_detect_t"] = cusum_hit["t"] if cusum_hit else None

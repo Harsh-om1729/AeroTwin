@@ -73,16 +73,18 @@ class Evidence:
     timelines: {aircraft_id: [window rows from compute_mission_timeline]}
     report: validation report (cache/results.json), may be None
     gap_study: reality-gap study (cache/gap_study.json), may be None
+    real_results: NGAFID real-flight validation (cache/real_results.json), may be None
     cfg: engine config (configs/engine_rotax912.yaml)
     """
 
-    def __init__(self, fleet, timelines, cfg, report=None, gap_study=None):
+    def __init__(self, fleet, timelines, cfg, report=None, gap_study=None, real_results=None):
         self.fleet = {e["id"]: e for e in fleet}
         self.order = [e["id"] for e in fleet]
         self.timelines = timelines
         self.cfg = cfg
         self.report = report
         self.gap_study = gap_study
+        self.real_results = real_results
 
     # ------------------------------------------------------------------ utils
     def resolve(self, aircraft_id):
@@ -281,7 +283,7 @@ class Evidence:
         cov = next((c for c in tw["coverage"] if c["nominal"] == 90), None)
         out = {
             "dataset": f"Simulated dataset v{r.get('dataset_version')}: {s['n_fault_missions']} fault + "
-                       f"{s['n_healthy_missions']} healthy test flights, evaluated once",
+                       f"{s['n_healthy_missions']} healthy test flights; thresholds and rules were fixed on separate data",
             "ml_ensemble": {
                 "faults_detected": f"{s['detection']['k']}/{s['detection']['n']}",
                 "false_alarm_events": f"{m['false_alarms']['events']} in {m['false_alarms']['healthy_hours']:.0f} healthy flight-hours",
@@ -310,8 +312,22 @@ class Evidence:
                             break
                     usable[cond][meth] = last
             out["robustness_largest_usable_reality_gap"] = usable
+        if self.real_results:
+            t = self.real_results["test"]
+            auc = {m["method"]: round(m["auc"], 2) for m in t["methods"]}
+            out["real_flight_validation"] = {
+                "dataset": f"NGAFID, {self.real_results['dataset']['aircraft']} (not a Rotax 912), {t['flights']} test flights",
+                "task": "flights just before vs just after unplanned maintenance (ROC-AUC, 0.50 = chance)",
+                "ml_ensemble_auc": auc["Fused"],
+                "low_oil_pressure_auc": auc["Low oil pressure"],
+                "caution": "Low oil pressure may reflect an oil change during the repair visit, not a detected fault.",
+            }
+            if self.real_results.get("supervised"):
+                sup = {(x["model"], x["features"]): round(x["test"]["auc"], 2) for x in self.real_results["supervised"]["results"]}
+                out["real_flight_validation"]["supervised_gradient_boosting_auc"] = sup[("Gradient boosting", "all sensors")]
+                out["real_flight_validation"]["supervised_auc_without_oil_pressure"] = sup[("Gradient boosting", "without oil pressure")]
         out["limitations"] = [
-            "All data is simulated; the main test uses a twin that matches the simulator exactly (an upper bound).",
+            "All fault tests use simulated data; the main test uses a twin that matches the simulator exactly (an upper bound).",
             "When the engine departs from the twin, every method degrades; per-engine calibration is required.",
             "The twin's RUL intervals become over-confident under model mismatch.",
             "Single faults only; sensor faults are not yet modelled.",

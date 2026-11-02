@@ -77,8 +77,9 @@ class EngineModel:
         # Oil Temp Target
         expected_oil_temp_target = T_amb_k - 273.15 + 40.0 + 60.0 * power_ratio
         
-        # CHT Target
-        expected_cht_target = T_amb_k - 273.15 + 50.0 + 80.0 * power_ratio
+        # CHT Target. Must keep a healthy engine under the 135 C redline even
+        # at full power on a +35 C day (tests/test_physics.py guards this).
+        expected_cht_target = T_amb_k - 273.15 + 45.0 + 60.0 * power_ratio
         
         # EGT Target
         expected_egt_target = T_amb_k - 273.15 + 200.0 + 600.0 * power_ratio

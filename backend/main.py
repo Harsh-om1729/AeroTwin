@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from aerotwin.diagnosis.fault_diagnosis import FAULT_ACTIONS, FAULT_LABELS
-from aerotwin.evaluation.report import load_or_build
+from aerotwin.evaluation.report import inputs_mtime, load_or_build
 from aerotwin.inference.replay import DATA_DIR, compute_mission_timeline, get_bundle, list_missions, load_mission_df
 from aerotwin.inference.simulate import PROFILES, SEVERITY_MULT, run_scenario
 from aerotwin.copilot import service as copilot
@@ -58,6 +58,21 @@ _sim_lock = threading.Lock()
 def _read_json(path):
     with open(path) as f:
         return json.load(f)
+
+
+def _gap_study():
+    """The cached reality-gap study, or None if missing or older than the
+    models/data it was measured on (retraining does not rebuild it)."""
+    path = ROOT / "cache" / "gap_study.json"
+    if not path.exists() or path.stat().st_mtime < inputs_mtime():
+        return None
+    return _read_json(path)
+
+
+def _real_results():
+    """Real-flight validation (python3 -m aerotwin.evaluation.real_report --test), or None."""
+    path = ROOT / "cache" / "real_results.json"
+    return _read_json(path) if path.exists() else None
 
 
 def _truth(split, mission_id):
@@ -103,9 +118,8 @@ async def lifespan(app):
     # Validation report over the full held-out test set (cached on disk;
     # rebuilt automatically if the models are retrained).
     _state["report"] = load_or_build()
-    gap_path = ROOT / "cache" / "gap_study.json"
-    _state["evidence"] = Evidence(FLEET, _state["timelines"], bundle.cfg, _state["report"],
-                                  _read_json(gap_path) if gap_path.exists() else None)
+    _state["evidence"] = Evidence(FLEET, _state["timelines"], bundle.cfg, _state["report"], _gap_study(),
+                                  _real_results())
     yield
 
 
@@ -196,10 +210,19 @@ async def copilot_ask(q: CopilotQuestion):
 @app.get("/api/gap-study")
 def gap_study():
     """Reality-gap robustness study (python3 -m aerotwin.evaluation.gap_study)."""
-    path = ROOT / "cache" / "gap_study.json"
-    if not path.exists():
+    study = _gap_study()
+    if study is None:
         raise HTTPException(404, "Run `python3 -m aerotwin.evaluation.gap_study` to build the reality-gap study.")
-    return _read_json(path)
+    return study
+
+
+@app.get("/api/real-results")
+def real_results():
+    """Real-flight validation on the NGAFID dataset."""
+    r = _real_results()
+    if r is None:
+        raise HTTPException(404, "Run `python3 -m aerotwin.evaluation.real_report --test` after downloading NGAFID.")
+    return r
 
 
 class Scenario(BaseModel):

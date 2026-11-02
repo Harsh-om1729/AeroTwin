@@ -96,3 +96,40 @@ def test_env_loader_handles_export_and_inline_comments(tmp_path, monkeypatch):
     import os
     assert os.environ.pop("COPILOT_T1") == "abc"
     assert os.environ.pop("COPILOT_T2") == "x # y"
+
+
+def test_redline_breach_keeps_next_mission_no_go_after_recovery():
+    from aerotwin.advisor.mission_advisor.go_nogo import advise
+    from aerotwin.inference.replay import get_bundle
+    cfg = get_bundle().cfg
+    row = {"rpm": 4800, "oil_press_bar": 4.0, "oil_temp_c": 90, "hi": 95, "alert": False, "alert_latched": False,
+           "degrading": False, "twin": None, "rul_s": None}
+    assert advise(row, cfg)["decision"] == "GO"
+    late = advise({**row, "limit_breach": {"t": 400.0, "reason": "CHT cyl 1 140 °C above limit 135 °C"}}, cfg)
+    assert late["decision"] == "NO-GO" and "T+06:40" in late["reasons"][0]
+
+
+def test_load_mission_returns_only_that_mission():
+    from aerotwin.inference.replay import load_mission_df
+    df = load_mission_df("test_healthy", "test_8_5")
+    assert set(df["mission_id"]) == {"test_8_5"} and len(df) == 3600 and df.index.is_monotonic_increasing
+
+
+def test_scenario_seeds_do_not_follow_from_the_previous_seed(monkeypatch):
+    from aerotwin.inference import simulate
+    seen = []
+    def fake(airframe, mission, profile, seed, **kw):
+        seen.append(seed)
+        raise ValueError("stop")
+    monkeypatch.setattr(simulate, "generate_mission_data", fake)
+    for _ in range(2):
+        np.random.seed(5)
+        with pytest.raises(ValueError):
+            simulate.run_scenario()
+    assert seen[0] != seen[1]
+
+
+def test_offline_intent_does_not_match_rul_inside_words():
+    from aerotwin.copilot.offline import detect_intent
+    assert detect_intent("Is the rule based check right?") != "rul"
+    assert detect_intent("What is the RUL of AT-104?") == "rul"

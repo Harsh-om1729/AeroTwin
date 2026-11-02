@@ -30,6 +30,7 @@ export const api = {
   mission: (split, id) => req(`/missions/${split}/${id}`),
   results: () => req('/results'),
   gapStudy: () => req('/gap-study'),
+  realResults: () => req('/real-results'),
   copilotStatus: () => req('/copilot/status'),
   copilotAsk: (body) =>
     req('/copilot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),

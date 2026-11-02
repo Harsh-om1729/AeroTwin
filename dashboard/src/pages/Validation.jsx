@@ -9,6 +9,7 @@ import TwinViewer from '../components/TwinViewer';
 import TwinValidation from '../components/TwinValidation';
 import XaiValidation from '../components/XaiValidation';
 import RobustnessStudy from '../components/RobustnessStudy';
+import RealFlights from '../components/RealFlights';
 import { FAULT_COLORS, FAULT_SHORT, clock, fmtDur, pct } from '../util';
 
 function Kpi({ icon: Icon, label, value, note, color = 'var(--accent)' }) {
@@ -27,17 +28,20 @@ const Tip = ({ active, payload, fmt }) => {
   return <div className="tt">{fmt(p)}</div>;
 };
 
-export default function Validation({ results }) {
+export default function Validation({ results, error }) {
   const [sel, setSel] = useState(null);
-  const [loaded, setLoaded] = useState({ id: null, data: null });
+  const [loaded, setLoaded] = useState({ id: null, data: null, error: null });
   const mission = sel && loaded.id === sel.id ? loaded.data : null;
+  const missionError = sel && loaded.id === sel.id ? loaded.error : null;
   const viewerRef = useRef(null);
 
   useEffect(() => {
     if (!sel) return;
     let live = true;
     viewerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    api.mission(sel.split, sel.id).then((d) => live && setLoaded({ id: sel.id, data: d }));
+    api.mission(sel.split, sel.id)
+      .then((d) => live && setLoaded({ id: sel.id, data: d, error: null }))
+      .catch((e) => live && setLoaded({ id: sel.id, data: null, error: e.message }));
     return () => { live = false; };
   }, [sel]);
 
@@ -65,6 +69,7 @@ export default function Validation({ results }) {
     return [...byDt.values()].sort((a, b) => a.dt - b.dt);
   }, [r]);
 
+  if (!r && error) return <div className="panel" style={{ color: 'var(--crit)' }}>Could not load the validation report: {error}</div>;
   if (!r) return <div className="loading"><div><LoaderCircle className="spin" /><div>Loading validation results…</div></div></div>;
 
   const fused = r.ablation.find((a) => a.model === 'Fused ensemble');
@@ -83,8 +88,8 @@ export default function Validation({ results }) {
           <h1 className="page-title">Model Validation</h1>
           <div className="page-sub">
             Frozen test split (simulated dataset v{r.dataset_version}): {s.n_fault_missions} fault flights (5 types × 12, one severity
-            each) and {s.n_healthy_missions} healthy flights, generated from seeds disjoint from training and evaluated once.
-            Thresholds and diagnosis rules were fixed beforehand on a separate development split. All engines share identical
+            each) and {s.n_healthy_missions} healthy flights, generated from seeds disjoint from training.
+            Thresholds and diagnosis rules were fixed on a separate development split, never on these flights. All engines share identical
             physics, and the physics twin matches the simulator exactly, so treat these as upper bounds, not real-engine performance.
           </div>
         </div>
@@ -104,6 +109,8 @@ export default function Validation({ results }) {
       {r.xai && <XaiValidation xai={r.xai} />}
 
       <RobustnessStudy amoc={r.amoc} native={{ far: r.metrics.false_alarms.per_fh, detection: r.summary.detection.rate, delay: r.twin.ml_median_delay_s }} />
+
+      <RealFlights />
 
       <div className="grid mt" style={{ gridTemplateColumns: 'minmax(0,1.1fr) minmax(0,1fr)' }}>
         <div className="panel">
@@ -171,7 +178,7 @@ export default function Validation({ results }) {
           </div>
           <div className="note mt">
             Diagnosis uses physics signatures (e.g. <i>misfire = one cylinder&apos;s EGT drops while vibration rises</i>). The rules were
-            developed on an earlier dataset, then frozen and checked on a separate development split before this test split was evaluated.
+            developed on an earlier dataset, then frozen and checked on a separate development split, never adjusted on this test split.
             The fault cylinder is always 1 (lean) or 2 (misfire) in this dataset.
           </div>
         </div>
@@ -267,7 +274,8 @@ export default function Validation({ results }) {
               <Plane size={15} /> Replay: {sel.id}
               <button className="btn icon right" style={{ marginLeft: 'auto' }} onClick={() => setSel(null)}><X size={14} /></button>
             </div>
-            {!mission ? <div className="dim"><LoaderCircle size={16} className="spin" /> Running pipeline…</div>
+            {missionError ? <div style={{ color: 'var(--crit)' }}>Failed to load: {missionError}</div>
+              : !mission ? <div className="dim"><LoaderCircle size={16} className="spin" /> Running pipeline…</div>
               : <TwinViewer key={sel.id} timeline={mission.timeline} truth={mission.truth} title={sel.id} subtitle="held-out test flight" />}
           </div>
         )}

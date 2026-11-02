@@ -10,7 +10,7 @@ from aerotwin.features.residuals import compute_residuals
 from aerotwin.health.health_index import compute_health_index, alert_logic
 from aerotwin.health.rul import estimate_rul
 from aerotwin.diagnosis.fault_diagnosis import diagnose
-from aerotwin.advisor.mission_advisor.go_nogo import advise
+from aerotwin.advisor.mission_advisor.go_nogo import advise, check_limits
 from aerotwin.twin.particle_filter import HealthParticleFilter
 from aerotwin.xai.attribution import explain
 from aerotwin.models.cusum import cusum_statistic, load_or_calibrate
@@ -92,8 +92,9 @@ def list_missions():
 
 
 def load_mission_df(split, mission_id):
-    df = pd.read_parquet(DATA_DIR / f"{split}.parquet")
-    mission_df = df[df["mission_id"] == mission_id].set_index("t").sort_index()
+    # filter while reading: the split files hold thousands of flight-seconds per mission
+    df = pd.read_parquet(DATA_DIR / f"{split}.parquet", filters=[("mission_id", "==", mission_id)])
+    mission_df = df.set_index("t").sort_index()
     if mission_df.empty:
         raise KeyError(f"mission_id {mission_id!r} not found in {split}")
     return mission_df
@@ -195,6 +196,7 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
     twin_est = HealthParticleFilter(bundle.cfg).run(mission_df, times, horizon_s=planned_mission_s)
 
     rows = []
+    limit_breach = None  # first redline crossed this flight; latched like an alert
     for i, t in enumerate(times):
         telem = mission_df.loc[t, telemetry_cols]
         tw = twin.loc[t]
@@ -237,6 +239,10 @@ def compute_mission_timeline(mission_df, bundle=None, hi_threshold=50, n_consecu
         row["cusum"] = round(float(cusum.loc[t]), 2)
         row["cusum_alarm"] = bool(cusum.loc[t] > bundle.cusum_h)
         row["diagnosis"] = diagnose(zrow) if degrading[i] else None
+        breached = check_limits(row, bundle.cfg)
+        if breached and limit_breach is None:
+            limit_breach = {"t": float(t), "reason": breached[0]}
+        row["limit_breach"] = limit_breach
         row["advisor"] = advise(row, bundle.cfg, planned_mission_s)
         rows.append(row)
     return rows

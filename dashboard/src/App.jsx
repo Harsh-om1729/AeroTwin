@@ -29,6 +29,7 @@ export default function App() {
   const [{ page, sel }, setNav] = useState(readHash);
   const [fleet, setFleet] = useState(null);
   const [results, setResults] = useState(null);
+  const [resultsError, setResultsError] = useState(null);
   const [meta, setMeta] = useState(null);
   const [error, setError] = useState(null);
   // Show the start-up sequence once per browser session (demo polish); later
@@ -48,7 +49,7 @@ export default function App() {
 
   useEffect(() => {
     api.fleet().then(setFleet).catch((e) => setError(e.message));
-    api.results().then(setResults).catch(() => {});
+    api.results().then(setResults).catch((e) => setResultsError(e.message));
     api.meta().then(setMeta).catch(() => {});
     const onHash = () => setNav(readHash());
     window.addEventListener('hashchange', onHash);
@@ -83,7 +84,7 @@ export default function App() {
   } else if (page === 'copilot') {
     content = <Copilot fleet={fleet} selected={sel} />;
   } else if (page === 'validation') {
-    content = <Validation results={results} />;
+    content = <Validation results={results} error={resultsError} />;
   } else {
     content = <Architecture meta={meta} />;
   }

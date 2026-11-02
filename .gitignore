@@ -11,3 +11,6 @@ dashboard/dist/
 
 # local secrets (AI copilot API key)
 .env
+
+# trained on the downloaded NGAFID dataset (rebuild with real_report)
+models/real/

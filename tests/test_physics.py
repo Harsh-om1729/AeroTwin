@@ -66,3 +66,13 @@ def test_vectorised_particles_match_scalar():
     for i, hi in enumerate(h):
         sc = apply_health(e, 1.0, hi, np.ones(4), np.ones(4), 1.0)
         assert np.allclose(vec["cht_c"][i], sc["cht_c"]) and vec["oil_temp_c"][i] == pytest.approx(sc["oil_temp_c"])
+
+
+@pytest.mark.parametrize("profile", ["standard", "hot_weather", "high_altitude", "rapid_throttle"])
+def test_healthy_engine_stays_inside_the_redlines(profile):
+    """A healthy engine must never read past a Rotax limit, even at full power
+    on a +35 C day: the Go/No-Go advisor would ground it."""
+    from aerotwin.advisor.mission_advisor.go_nogo import check_limits
+    from aerotwin.simulator.generate_dataset import generate_mission_data
+    df = generate_mission_data("T", "t", profile, seed=11)
+    assert not [r for r in df.to_dict("records") if check_limits(r, CFG)]

@@ -88,6 +88,8 @@ export default function FaultLab() {
     const key = td ? (td.cylinder ? `${td.fault}:${td.cylinder}` : td.fault) : null;
     if (!t.fault_type) {
       twinLine = res.twin_detect_t == null ? 'Bayesian twin: P(degraded) stayed low all flight. No false alarm.' : `Bayesian twin raised a false detection at T+${clock(res.twin_detect_t)}.`;
+    } else if (res.twin_detect_t != null && res.twin_delay_s == null) {
+      twinLine = `Bayesian twin: false detection at T+${clock(res.twin_detect_t)}, before the fault began.`;
     } else if (res.twin_detect_t != null) {
       const ok = td.fault === t.fault_type;
       twinLine = `Bayesian twin: detected ${fmtDur(res.twin_delay_s)} after onset as ${HYP_LABEL[key]} (${ok ? 'correct' : 'wrong'})`

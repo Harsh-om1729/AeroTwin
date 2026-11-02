@@ -24,15 +24,15 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import pandas as pd
 
+from aerotwin.evaluation.detection_rate import first_new_alarm_index
 from aerotwin.evaluation.false_alarms import count_false_alarms
 from aerotwin.evaluation.stats import clopper_pearson
-from aerotwin.simulator.fault_injection import FaultInjector, compute_failure_t
+from aerotwin.simulator.fault_injection import FAULT_CYLINDER, FaultInjector, compute_failure_t
 from aerotwin.simulator.generate_dataset import FAULTS, generate_mission_data
 
 LEVELS = [0.0, 0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0]
 CONDITIONS = ["raw", "calibrated"]
 METHODS = {"ml": "ML ensemble", "twin": "Bayesian twin", "cusum": "CUSUM"}
-TRUE_CYL = {"injector_abnormality": 1, "misfire": 2}
 N_HEALTHY, RUNS_PER_FAULT, SEED_BASE = 10, 4, 6
 MISSION_S = 3600
 
@@ -92,15 +92,13 @@ def _metrics(flights, timelines):
         for f in (f for f in flights if f["fault"]):
             fail = compute_failure_t(f["fault"], f["onset"], f["rate"])
             tl = timelines[f["id"]]
-            # a detection is a NEW alarm that starts after onset; an alarm that
-            # was already on before the fault began earns no credit
-            hit = next((x for k, x in enumerate(tl)
-                        if x[m] and (k == 0 or not tl[k - 1][m]) and f["onset"] <= x["t"] < fail), None)
+            i = first_new_alarm_index([x[m] for x in tl], [x["t"] for x in tl], f["onset"], fail)
+            hit = tl[i] if i is not None else None
             det.append(hit is not None)
             if hit:
                 delays.append(hit["t"] - f["onset"])
                 if m == "twin":
-                    diag_ok.append(hit["map"]["fault"] == f["fault"] and hit["map"]["cylinder"] == TRUE_CYL.get(f["fault"]))
+                    diag_ok.append(hit["map"]["fault"] == f["fault"] and hit["map"]["cylinder"] == FAULT_CYLINDER.get(f["fault"]))
                     cover += [x["rul"]["p5"] <= fail - x["t"] <= x["rul"]["p95"]
                               for x in tl if x["twin"] and x["rul"] and hit["t"] <= x["t"] < fail]
                 elif m == "ml":

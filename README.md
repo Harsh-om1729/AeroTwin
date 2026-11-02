@@ -7,11 +7,11 @@ An ensemble of three AI detectors watches the difference (the residual). The sys
 Index, warns before failure, names the fault and the cylinder, estimates remaining useful life, and gives a
 Go / Caution / No-Go decision for the next mission.
 
-> **Read this first.** All data is **simulated**. The healthy twin and the particle filter use the *same equations*
+> **Read this first.** All fault results are **simulated**. The healthy twin and the particle filter use the *same equations*
 > as the simulator, and every simulated engine is physically identical. The numbers below are therefore an
 > **upper bound** on what this design can do, not a measurement of a real engine. They come from a frozen test
-> split (dataset v2.0) that was generated from disjoint seeds and evaluated once, after thresholds and diagnosis
-> rules had been fixed on a separate development split.
+> split (dataset v2.1) generated from disjoint seeds. Thresholds and diagnosis rules were fixed on a separate
+> development split and never tuned on the test split, but the split has been re-run after retraining and bug fixes.
 
 ## ⭐ Flagship: Bayesian health twin (particle filter)
 
@@ -28,13 +28,13 @@ healthy is it right now, and when will it fail, with what certainty?"*
 
 | Test split (60 fault + 60 healthy simulated flights) | Bayesian twin | ML ensemble |
 |---|---|---|
-| Faults detected before failure | 60/60 (95% CI 94–100%) | 59/60 (95% CI 91–100%) |
-| Fault type + cylinder correct | 60/60 (95% CI 94–100%) | 60/60 type, 24/24 cylinder |
-| False-alarm events in 80.3 healthy flight-hours | **0** (95% upper bound 0.046 /FH) | 1 (95% CI 0.0003–0.069 /FH) |
-| Median detection delay after onset | 37 s | 107 s |
-| 90% RUL interval contains the true failure time | **90.0%** (95% CI 87.7–92.0%) | no intervals |
-| RUL median absolute error | 68 s | 262 s (HI linear trend)* |
-| RUL within ±20% of truth (α-λ) | 33% | 1.2% (HI linear trend)* |
+| Faults detected before failure | 60/60 (95% CI 94–100%) | 58/60 (95% CI 88–100%) |
+| Fault type + cylinder correct | 60/60 (95% CI 94–100%) | 58/60 type, 24/24 cylinder |
+| False-alarm events in 80.3 healthy flight-hours | **0** (95% upper bound 0.046 /FH) | 2 (95% CI 0.003–0.090 /FH) |
+| Median detection delay after onset | 37.5 s | 108 s |
+| 90% RUL interval contains the true failure time | **91.1%** (95% CI 88.8–92.9%) | no intervals |
+| RUL median absolute error | 56 s | 263 s (HI linear trend)* |
+| RUL within ±20% of truth (α-λ) | 36% | 0.8% (HI linear trend)* |
 | Hidden-health tracking error (MAE) | 0.006 | n/a |
 
 The delays are not a like-for-like race: the ML path waits for a 60 s window plus 8 × 10 s of persistence, while
@@ -83,11 +83,12 @@ same 3-window persistence and comparing at **≤ 0.05 false-alarm events per fli
 
 | Method | Median detection delay |
 |---|---|
-| Bayesian twin | 45 s |
+| Bayesian twin | 46 s |
 | CUSUM | 54 s |
-| ML ensemble (fused score) | not reachable under a 3-window rule; with its own 8-window rule: 0.012 /FH, 98% detected, 107 s |
+| ML ensemble (fused score) | not reachable under a 3-window rule; with its own 8-window rule: 0.025 /FH, 97% detected, 108 s |
 
 On a perfectly matched twin, plain CUSUM is as good as anything else. The ML ensemble's value is not detection speed.
+These thresholds were picked by sweeping the test split itself, so this comparison is descriptive, not a tuned result.
 
 **2. Reality-gap study** (`aerotwin/simulator/variation.py`, `aerotwin/evaluation/gap_study.py`). A "true" engine
 departs from the twin by a knob `gap` ∈ [0, 1]: per-engine CHT/EGT offsets, oil-pump and vibration gains,
@@ -104,9 +105,9 @@ Largest gap at which a method stays usable (≤ 5% of healthy time in false alar
 | Per-engine calibration (one healthy reference flight) | 0.20 | **0.50** | 0.05 |
 
 * The optimal-on-paper CUSUM is the **most fragile**: at gap 0.05 it spends 82% of healthy time in alarm.
-* The Bayesian twin degrades most gracefully, and with calibration keeps ≥ 85% correct diagnosis even at gap 1.0.
-* **Honest caveats:** even calibrated, the twin's short false-alarm *events* grow with the gap (21 in 17 h at gap 0.2),
-  and its 90% RUL intervals become over-confident as the gap grows (calibrated: 81% coverage at gap 0.1, 41% at
+* The Bayesian twin degrades most gracefully, and with calibration keeps ≥ 95% correct diagnosis up to gap 0.75 (74% at gap 1.0).
+* **Honest caveats:** even calibrated, the twin's short false-alarm *events* grow with the gap (20 in 17 h at gap 0.2),
+  and its 90% RUL intervals become over-confident as the gap grows (calibrated: 88% coverage at gap 0.1, 63% at
   gap 0.5), because the filter does not yet model mismatch. No method is deployable on a poorly matched engine without calibration.
 
 Run: `python3 -m aerotwin.evaluation.gap_study` (~5 min, cached in `cache/gap_study.json`). The Fault Injection Lab
@@ -122,27 +123,72 @@ percentile would drop from 97 to 49"). SHAP was not used: TreeSHAP covers only t
 level of 45 window statistics, not sensors.
 
 Explanations are **validated against the simulator's ground truth**: at the first alert of each test fault flight, is
-the top-ranked sensor one the fault physically acts on?
+the top-ranked sensor one the fault physically acts on? (58 flights: the two faults the ensemble missed have no alert to explain.)
 
 | Whose explanation | Top sensor physically correct |
 |---|---|
-| Ensemble | **60/60** (95% CI 94–100%) |
-| LSTM-AE | 60/60 |
-| PCA-SPE | 58/60 |
-| Isolation Forest | 54/60 |
+| Ensemble | **58/58** (95% CI 94–100%) |
+| LSTM-AE | 58/58 |
+| PCA-SPE | 57/58 |
+| Isolation Forest | 53/58 |
 
-The single false alarm on healthy flights is explained by a CHT 1 blip (74% of the evidence).
+The two false alarms on healthy flights are explained by a CHT 4 blip (61% of the evidence) and a CHT 1 blip (74%).
+
+## Real flights: what happens outside the simulator
+
+The simulated numbers above are an upper bound, so the same detectors were also run on real data: the
+[NGAFID Aviation Maintenance Dataset](https://arxiv.org/abs/2210.07317) (flight-school Cessna 172s, not a Rotax 912).
+The physics twin does not apply to this engine, so a **learned healthy baseline** (`aerotwin/real_engine/sim2real.py`)
+predicts each sensor from RPM, fuel flow, outside air temperature, altitude, airspeed and vertical speed, using
+after-maintenance flights. Its error on unseen healthy flights is about 9 °C for CHT and 18 °C for EGT. The particle
+filter was not run. 10,177 of 11,269 usable benchmark flights (10,855 airborne hours) passed the data checks.
+
+| Before vs after unplanned maintenance (1,986 test flights, ROC-AUC, 0.50 = coin flip) | Test | 95% CI |
+|---|---|---|
+| Fused ML ensemble | **0.51** | 0.49–0.53 |
+| Isolation Forest / PCA / LSTM alone | 0.52 / 0.51 / 0.50 | all include 0.50 |
+| Plain residual threshold | 0.50 | 0.47–0.53 |
+| Low oil pressure (one residual) | **0.68** | 0.66–0.70 |
+
+* **The ensemble is at chance level on real data.** It scored 0.54 on the development fold, and that did not hold on
+  the test fold. Nothing was tuned after seeing the test fold. A supervised deep model reached 76.1% accuracy in the
+  dataset paper, but it trains on these labels, so that is a reference and not a like-for-like comparison.
+* **Low oil pressure held up, but be careful with it.** It was picked on the development fold as the best of 11 simple
+  scores, and it was just as strong for baffle problems there (0.64), which should not change oil pressure. A repair
+  visit that also changes the oil would produce the same pattern, so it is a lead to investigate, not a validated detector.
+* **Limits of this data:** labels are per flight (before/after a repair), not fault times. "After" means the reported
+  part was fixed, not that the engine is fault-free. There is no vibration or throttle channel and no aircraft or
+  event id. Folds are consecutive blocks; flights of repairs inferred to cross folds were dropped, but one aircraft can
+  still appear in several folds. Confidence intervals resample inferred repair groups, which over-split the true
+  events (5,614 groups for 2,111 events), so they may be slightly narrow.
+
+**Supervised training on the labels** (`aerotwin/evaluation/real_supervised.py`). Trained on 3,964 flights, chosen on the
+development fold, then scored on 2,112 test flights. This is a second use of the test fold, after the evaluation above.
+
+| Test AUC (95% CI) | All sensors | Without oil pressure | Oil pressure only |
+|---|---|---|---|
+| Gradient boosting | **0.74** (0.72–0.77) | 0.56 (0.54–0.58) | 0.72 (0.70–0.74) |
+| 1D CNN | 0.70 (0.68–0.72) | 0.55 (0.52–0.57) | 0.75 (0.72–0.77) |
+
+The main model has 67% balanced accuracy: it flags 67% of pre-maintenance flights and 32% of post-maintenance flights.
+Removing one sensor removes most of the skill, so the models are mainly reading the oil-pressure shift. That makes
+this a maintenance-*visit* classifier until the oil-change explanation is ruled out, not a proven fault detector. The
+dataset has no service records to test that.
+
+Run: extract the dataset anywhere under `data/`, then `python3 -m aerotwin.evaluation.real_report` (development fold,
+~6 min the first time) and `--test` (frozen fold), then `python3 -m aerotwin.evaluation.real_supervised --test`. `2days/flight_data.pkl` is never loaded, because pickles can run code.
 
 ## ML ensemble results (same test split)
 
 | Metric | Result |
 |---|---|
-| Faults detected after onset, before failure | 59/60 (one bearing-wear fault was flagged after its failure threshold) |
-| Fault type correct at first alert (signature rules) | 60/60 |
+| Faults detected after onset, before failure | 58/60 (two bearing-wear faults raised no new alert before their failure threshold) |
+| Fault type correct at first alert (signature rules) | 58/60 (the same two flights have no alert to diagnose) |
 | Faulty cylinder (lean cylinder / misfire flights) | 24/24 — the fault is always on cylinder 1 or 2 in this dataset |
-| Median warning before the simulated failure threshold | 3.6 min (lubrication 16 min, misfire 10 s) |
-| False-alarm events, single detectors vs fused | Isolation Forest 10 · PCA 33 · LSTM-AE 78 · **fused 1** |
+| Median warning before the simulated failure threshold | 5.1 min (lubrication 16 min, misfire 10 s) |
+| False-alarm events, single detectors vs fused | Isolation Forest 13 · PCA 32 · LSTM-AE 77 · **fused 2** |
 | HI-trend RUL estimates on the conservative side | 97% |
+| Healthy flights ever shown NO-GO | 2/60 (those two false alarms; none from a redline) |
 
 All numbers are recomputed by `python3 -m aerotwin.evaluation.report` (cached in `cache/results.json`) and shown on the
 dashboard's *Model Validation* page. Development numbers on the separate `val_fault` split come from
@@ -162,7 +208,7 @@ start evaluates the 120 test flights (~3 min), cached afterwards. Later starts t
 * Interactive API docs (Swagger): http://localhost:8000/docs
 * Developer mode with hot reload: `./run.sh --dev` → http://localhost:5173
 * Retrain the models: `./run.sh --retrain`
-* Tests: `python3 -m pytest -q` (89 tests, one documented expected failure)
+* Tests: `python3 -m pytest -q` (145 tests, one documented expected failure)
 
 ## Dashboard pages
 
@@ -206,7 +252,8 @@ residuals = measured − expected   (15 channels + CHT/EGT spread)
 | `aerotwin/diagnosis/` | Physics-signature fault isolation |
 | `aerotwin/advisor/` | Go / Caution / No-Go mission advisor |
 | `aerotwin/inference/` | Full-pipeline replay, on-demand scenario simulation |
-| `aerotwin/evaluation/` | Training, metrics, validation report |
+| `aerotwin/real_engine/` | NGAFID loader and learned healthy baseline |
+| `aerotwin/evaluation/` | Training, metrics, validation report, real-flight report |
 | `backend/main.py` | FastAPI: REST + WebSocket, serves the dashboard |
 | `dashboard/` | React + Vite + Recharts UI |
 | `tests/` | Pytest suite |
@@ -214,10 +261,11 @@ residuals = measured − expected   (15 channels + CHT/EGT spread)
 ## Rebuilding from scratch
 
 ```bash
-python3 -m aerotwin.simulator.generate_dataset   # 308 seeded one-hour flights → data/ (dataset v2.0)
+python3 -m aerotwin.simulator.generate_dataset   # 308 seeded one-hour flights → data/ (dataset v2.1)
 python3 -m aerotwin.evaluation.train_models      # trains + calibrates → models/
 python3 -m aerotwin.evaluation.report --dev      # development split only (safe to look at while tuning)
 python3 -m aerotwin.evaluation.report            # frozen test split → cache/results.json
+python3 -m aerotwin.evaluation.gap_study         # reality-gap study → cache/gap_study.json (hidden if older than the models)
 ```
 
 ## API
@@ -230,12 +278,13 @@ python3 -m aerotwin.evaluation.report            # frozen test split → cache/r
 | GET | `/api/missions/{split}/{id}` | Run the pipeline on any test mission |
 | POST | `/api/simulate` | `{fault_type, severity, onset_s, profile, seed}` → new simulated flight + analysis |
 | GET | `/api/results` | Validation report |
+| GET | `/api/real-results` | Real-flight validation on NGAFID (404 until built) |
 | GET | `/api/meta` | Engine limits, model configuration |
 | POST | `/api/copilot` | `{question, aircraft_id?, t?, history?, force_offline?}` → grounded answer, mode, evidence used, fallback reason |
 | GET | `/api/copilot/status` | Whether Claude is configured (never returns the key) |
 | WS | `/api/stream/{id}?speed=5` | Window-by-window stream of a replayed flight (the dashboard itself replays client-side) |
 
-## Data splits (dataset v2.0)
+## Data splits (dataset v2.1)
 
 | Split | Flights | Seed block | Used for |
 |---|---|---|---|
@@ -243,13 +292,13 @@ python3 -m aerotwin.evaluation.report            # frozen test split → cache/r
 | `val_healthy` | 28 | 2 | Fusion percentiles, Health-Index calibration |
 | `val_fault` | 20 (5 faults × 4) | 4 | The only fault data used while developing rules, thresholds and filter settings |
 | `test_healthy` | 60 (hot-weather profile) | 3 | False-alarm events (final) |
-| `test_fault` | 60 (5 faults × 12, one severity each) | 5 | Detection, diagnosis, RUL (final, evaluated once) |
+| `test_fault` | 60 (5 faults × 12, one severity each) | 5 | Detection, diagnosis, RUL (final, never tuned on) |
 
 Every flight has its own seed, recorded in the fault logs with the dataset version.
 
 ## Limitations
 
-* Trained and validated on **simulated** flights with idealised, single, smoothly progressing faults. Real-engine accuracy will be lower and must be re-measured on recorded data (`aerotwin/real_engine/recording_protocol.md`).
+* Fault results come from **simulated** flights with idealised, single, smoothly progressing faults. On real Cessna 172 flights the ensemble was at chance level (see *Real flights*); Rotax 912 performance has not been measured on any real engine.
 * **The main test split uses an exact twin** (the healthy twin and the Bayesian twin share the simulator's equations, and all engines are identical), so its numbers are an upper bound. The reality-gap study above measures how quickly each method degrades when that assumption fails.
 * The engine equations are heuristic (linear in power, first-order thermal lag); there is no manifold pressure, AFR, propeller load or airspeed-dependent cooling.
 * The "lean cylinder" fault key is still `injector_abnormality` in code; the 912 S/ULS is carburetted, so it models an intake leak or fuel-metering fault.

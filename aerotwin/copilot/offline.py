@@ -12,8 +12,9 @@ from __future__ import annotations
 import re
 
 from aerotwin.copilot.evidence import MANUAL_NOTE
+from aerotwin.diagnosis.fault_diagnosis import FAULT_ACTIONS
 
-INTENTS = [  # checked in order; first match wins
+INTENTS = [  # regexes, checked in order; first match wins
     ("reliability", ["reliab", "accura", "trust", "confiden", "validat", "how good", "false alarm", "real engine",
                      "real world", "real-world", "limitation", "proof", "evidence that"]),
     ("limits", ["limit", "redline", "red line", "maximum", "minimum", "allowed"]),
@@ -23,8 +24,8 @@ INTENTS = [  # checked in order; first match wins
     ("timeline", ["timeline", "when did", "events", "what happened", "history", "sequence", "first detect"]),
     ("xai", ["sensor", "explain the ml", "explainable", "which reading", "caused the alert", "evidence share",
              "xai", "why did the ml", "why did the model", "attribution"]),
-    ("rul", ["rul", "remaining", "how long", "time to fail", "until fail", "life left", "when will", "how much time"]),
-    ("maintenance", ["inspect", "check first", "what should", "fix", "repair", "maintenance", "action", "do next",
+    ("rul", [r"\brul\b", "remaining", "how long", "time to fail", "until fail", "life left", "when will", "how much time"]),
+    ("maintenance", ["inspect", "check first", "what should", r"\bfix", "repair", "maintenance", "action", "do next",
                      "procedure", "replace", "technician", "work order"]),
     ("fleet_weak", ["overview", "worst", "summary"]),  # fleet only when no aircraft is named
 ]
@@ -35,7 +36,7 @@ CYL_RE = re.compile(r"\bcylinder (\d)\b")
 def detect_intent(question):
     q = question.lower()
     for name, words in INTENTS:
-        if any(w in q for w in words):
+        if any(re.search(w, q) for w in words):
             return name
     return "status"
 
@@ -84,7 +85,10 @@ def _status(ev, a, t):
             lines.append("- Failure threshold already reached" if rul["ci90_high"] == 0 else
                          f"- Remaining useful life about {rul['median']} min (90% interval {rul['ci90_low']}–{rul['ci90_high']} min)")
     if s["signature_check"]:
-        lines.append(f"- Signature check agrees: {s['signature_check']['fault']} ({s['signature_check']['evidence']})")
+        sig = s["signature_check"]
+        verdict = ("" if not tw.get("most_likely_fault") else
+                   " agrees" if sig["fault"] == tw["most_likely_fault"] else " disagrees")
+        lines.append(f"- Signature check{verdict}: {sig['fault']} ({sig['evidence']})")
     ml = s["ml_ensemble"]
     if (ml["alert"] or ml["alert_latched"] or ml["degrading"]) and s["explainable_ai"] and s["explainable_ai"]["top_sensors"]:
         top = s["explainable_ai"]["top_sensors"][0]
@@ -105,17 +109,17 @@ def _maintenance(ev, a, t):
     tw = s["bayesian_twin"]
     # the Bayesian twin's hypothesis first, the signature check as a second opinion
     candidates = [tw.get("most_likely_fault"), (s["signature_check"] or {}).get("fault")]
-    key = None
-    for k in ("lubrication", "cooling_degradation", "injector_abnormality", "misfire", "abnormal_vibration"):
-        label = ev.maintenance_actions(k)["fault"]
-        if any(c and c.startswith(label) for c in candidates):
-            key = k
+    key = chosen = None
+    for c in filter(None, candidates):
+        key = next((k for k in FAULT_ACTIONS if c.startswith(ev.maintenance_actions(k)["fault"])), None)
+        if key:
+            chosen = c
             break
     if key is None:
         return (f"**{s['aircraft_id']} shows no fault signature** ({s['decision']}), so there is no targeted inspection "
                 f"to recommend. Continue routine maintenance per the Rotax documentation."), ["get_aircraft_status"]
     m = ev.maintenance_actions(key)
-    cyl = next((CYL_RE.search(c) for c in candidates if c and CYL_RE.search(c)), None)
+    cyl = CYL_RE.search(chosen)
     cyl_note = f" on cylinder {cyl.group(1)}" if cyl else ""
     lines = [f"**{s['aircraft_id']}: inspect for {m['fault'].lower()}{cyl_note}** ({s['decision']}).", "",
              f"**Primary action:** {m['primary_action']}", "", "**Suggested checks, in order:**"]
@@ -208,6 +212,13 @@ def _reliability(ev):
         lines.append(f"- Robustness: with per-engine calibration the twin stays usable up to reality gap "
                      f"{g['calibrated']['twin']}, the ML ensemble up to {g['calibrated']['ml']}, CUSUM up to "
                      f"{g['calibrated']['cusum']}")
+    if v.get("real_flight_validation"):
+        r = v["real_flight_validation"]
+        lines.append(f"- Real flights ({r['dataset']}): ML ensemble AUC {r['ml_ensemble_auc']}, close to chance; "
+                     f"low oil pressure AUC {r['low_oil_pressure_auc']}. {r['caution']}"
+                     + (f" A supervised model reached AUC {r['supervised_gradient_boosting_auc']}, but only "
+                        f"{r['supervised_auc_without_oil_pressure']} without oil pressure."
+                        if "supervised_gradient_boosting_auc" in r else ""))
     lines += ["", "**Limitations:**"] + [f"- {x}" for x in v["limitations"]]
     return "\n".join(lines), ["get_validation_summary"]
 
@@ -234,6 +245,9 @@ def answer_offline(ev, question, aircraft_id=None, t=None):
 
     if intent == "fleet_weak":
         intent = "status" if named else "fleet"
+    # "how confident is the twin about AT-104?" asks about that aircraft, not the validation study
+    if intent == "reliability" and named and "confiden" in question.lower():
+        intent = "status"
     if intent == "fleet":
         return _fleet(ev)
     if intent == "limits":

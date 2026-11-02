@@ -52,7 +52,7 @@ def generate_mission_data(airframe_id, mission_id, profile_name, seed, fault_inj
 
 # Bump whenever the simulator physics or the split recipe changes; recorded
 # in the fault logs so results can be traced to the data that produced them.
-DATASET_VERSION = "2.0"
+DATASET_VERSION = "2.1"
 
 FAULTS = [
     ("lubrication", 0.001),

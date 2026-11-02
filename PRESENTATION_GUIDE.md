@@ -14,7 +14,7 @@
 > and where the fault is, estimates remaining life with uncertainty, and advises whether the next mission is safe."
 
 **2. Fleet Command (45 s)**
-- KPI row: 8 aircraft, 3 GO, 5 NO-GO, faults detected 59/60 on the simulated test flights.
+- KPI row: 8 aircraft, 3 GO, 5 NO-GO, faults detected 58/60 on the simulated test flights.
 - "Each card is a simulated test flight that was never used in training. AT-105 is grounded: ignition misfire on cylinder 2."
 
 **3. Twin Replay (2 min).** Click **AT-107** (lean cylinder), then drag the time slider to about **T+27:30** and press play.
@@ -46,13 +46,13 @@
 - Also run **Healthy engine** → no false alarm.
 
 **5. Model Validation (1.5 min)**
-- Top KPIs: "On 60 simulated fault flights the ML ensemble caught 59 before failure. One bearing-wear fault was flagged
-  too late; that is a real weakness. One false alarm in 80 healthy flight-hours. Every number has a 95% confidence interval."
-- **Ablation table:** "Alone, the three detectors raised 10, 33 and 78 false alarms over the same hours. Fused, 1."
+- Top KPIs: "On 60 simulated fault flights the ML ensemble caught 58 before failure. Two bearing-wear faults raised no alert in
+  time; that is a real weakness. Two false alarms in 80 healthy flight-hours. Every number has a 95% confidence interval."
+- **Ablation table:** "Alone, the three detectors raised 13, 32 and 77 false alarms over the same hours. Fused, 2."
 - **Explainable AI panel:** "I didn't just draw explanations, I checked them: the top-ranked sensor matched the
-  fault's physics in 60/60 test flights, and the heatmap shows each fault lighting up its own sensors."
+  fault's physics in all 58 alerted test flights, and the heatmap shows each fault lighting up its own sensors."
 - **Flagship panel:** "The twin detected 60/60 with zero false alarms, and its uncertainty is validated: the 90% RUL
-  interval contains the true failure time 90.0% of the time."
+  interval contains the true failure time 91.1% of the time."
 
 - **Robustness panel (the strongest research point):** "On a perfect twin, the textbook CUSUM is as fast as my
   filter, so I don't claim speed. The real question is: what if the twin is wrong? I built an engine that departs from
@@ -91,7 +91,7 @@ Yes for the sensor physics, and that is the main limitation. It does not know th
 time, and it was tuned only on separately simulated flights. On a real engine the physics model must first be calibrated.
 
 **Why not just use a simple threshold or CUSUM?**
-I tested exactly that. With a perfect twin, CUSUM is optimal and matches my filter (45 s vs 54 s at the same
+I tested exactly that. With a perfect twin, CUSUM is optimal and matches my filter (46 s vs 54 s at the same
 false-alarm rate). But in the reality-gap study it is the most fragile method: at gap 0.05 it is in false alarm 82% of
 healthy flight time. The Bayesian twin degrades most gracefully, which is why it is the flagship.
 
@@ -114,8 +114,8 @@ Partly design: the ML path waits for a 60 s window and 80 s of persistence befor
 second. Partly the matched model. It is not a like-for-like comparison, and I don't claim a speed-up factor.
 
 **How do you know the uncertainty is right?**
-Coverage testing: over about 3,000 predictions, the 90% interval contained the true failure time 90.0% of the time
-(95% CI 87.7–92.0%, bootstrapped over flights). The 50% interval is somewhat over-confident.
+Coverage testing: over about 3,000 predictions, the 90% interval contained the true failure time 91.1% of the time
+(95% CI 88.8–92.9%, bootstrapped over flights). The 50% interval is somewhat over-confident.
 
 **What is α-λ accuracy?**
 A standard prognostics metric (Saxena et al.): the fraction of RUL predictions within ±α (here 20%) of the true RUL.
@@ -125,25 +125,32 @@ Twin 33%; the Health-Index trend 1.2%, though that method targets a different th
 Sensor-level counterfactual occlusion: reset one sensor's residual to healthy, re-score all three models, and measure
 the drop in their raw anomaly score. It works identically for the Isolation Forest, PCA, the LSTM and the fusion, and
 answers "which sensor?" directly. TreeSHAP would only cover the Isolation Forest, at the level of 45 window statistics.
-I validated the explanations against ground truth: the top sensor was physically correct in 60/60 test flights.
+I validated the explanations against ground truth: the top sensor was physically correct in all 58 alerted test flights.
 
 **Why train only on healthy data?**
 Real fleets have almost no recorded failures. Unsupervised detectors learn "normal" and flag anything else, so they
 need no fault labels.
 
 **How do you avoid false alarms?**
-An alert needs HI < 50 for 8 consecutive windows (80 s). On the test split: 1 false-alarm event in 80.3 healthy
-flight-hours (95% CI 0.0003–0.069 per hour). One event is too few for a precise rate, so I report the interval.
+An alert needs HI < 50 for 8 consecutive windows (80 s). On the test split: 2 false-alarm events in 80.3 healthy
+flight-hours (95% CI 0.003–0.090 per hour). Two events are too few for a precise rate, so I report the interval.
 
 **How does diagnosis work? Is it ML?**
 Physics rules, which makes it explainable: oil-pressure drop = lubrication, all CHTs up = cooling, one cylinder's EGT up =
 lean cylinder, one EGT down + vibration up = misfire, vibration only = bearing. I developed the rules on an earlier dataset,
-then froze them and checked them on a separate development split before the final test split was evaluated once. In this
+then froze them and checked them on a separate development split and never tuned them on the test split. In this
 dataset the faulty cylinder is always 1 or 2, so cylinder accuracy should be re-tested with random cylinders.
 
+**Did you test it on real data?**
+Yes, on 1,986 test flights of real Cessna 172s from the NGAFID dataset, a different engine from the Rotax, so a learned
+baseline replaced the physics twin. The ensemble scored AUC 0.51, which is chance level. That is the most important
+limit of my simulated results, and I report it. One residual, low oil pressure, reached AUC 0.68, but it may just reflect
+an oil change during the repair visit, so I treat it as a lead and not a validated detector. I also trained supervised
+models on the labels. The best reached AUC 0.74, but only 0.56 without oil pressure, so they are mostly reading that one sensor.
+
 **Is there data leakage?**
-Every split comes from its own seed block, the scaler and models are fit on healthy training data only, and the test split
-was evaluated once. The bigger caveat isn't leakage but the matched model: the twin and the simulator share equations.
+Every split comes from its own seed block, the scaler and models are fit on healthy training data only, and nothing is
+tuned on the test split, though it was re-run after retraining and bug fixes. The bigger caveat isn't leakage but the matched model: the twin and the simulator share equations.
 
 **Why "lean cylinder" and not "injector fault"?**
 The Rotax 912 S/ULS is carburetted, so a single lean cylinder points to an intake leak or fuel-metering problem.
