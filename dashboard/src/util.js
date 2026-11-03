@@ -7,15 +7,17 @@ export const FAULT_SHORT = {
   none: 'Not diagnosed',
 };
 
+// Series colours sit in the validated lightness band for the plum glass surface
+// (#241650). The fault set's closest pair is CVD dE 6.6, so its charts always label each fault.
 export const FAULT_COLORS = {
-  lubrication: '#f59e0b',
-  cooling_degradation: '#ef4444',
-  injector_abnormality: '#a78bfa',
-  misfire: '#f472b6',
-  abnormal_vibration: '#38bdf8',
+  lubrication: '#C08811',
+  cooling_degradation: '#03AF73',
+  injector_abnormality: '#9F73FF',
+  misfire: '#FE20AA',
+  abnormal_vibration: '#04A1D8',
 };
 
-export const MODEL_COLORS = { IF: '#38bdf8', PCA: '#a78bfa', LSTM: '#f472b6' };
+export const MODEL_COLORS = { IF: '#04A1D8', PCA: '#9F73FF', LSTM: '#FE20AA' };
 
 export const hiColor = (hi) => (hi >= 80 ? 'var(--ok)' : hi >= 50 ? 'var(--warn)' : 'var(--crit)');
 export const statusBadge = (s) => ({ nominal: 'b-ok', warning: 'b-warn', critical: 'b-crit' })[s] || 'b-mute';
@@ -66,6 +68,6 @@ export const SENSOR_LABEL = {
 };
 
 // Detector identity colours for comparison charts: first three slots of the
-// validated reference palette (dark mode; all-pairs CVD dE >= 9.4, contrast >= 3:1 on panels).
-export const METHOD_COLORS = { ml: '#3987e5', cusum: '#d95926', twin: '#199e70' };
+// validated palette on the plum glass surface (CVD dE >= 10, contrast >= 3:1).
+export const METHOD_COLORS = { ml: '#4892FD', cusum: '#DE7200', twin: '#03AF73' };
 export const METHOD_LABEL = { ml: 'ML ensemble', twin: 'Bayesian twin', cusum: 'CUSUM' };

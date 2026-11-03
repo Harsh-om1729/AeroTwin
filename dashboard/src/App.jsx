@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, BarChart3, Bot, FlaskConical, LayoutGrid, Network, Plane } from 'lucide-react';
+import { Activity, BarChart3, Bot, FlaskConical, LayoutGrid, Network } from 'lucide-react';
 import { api } from './api';
 import Fleet from './pages/Fleet';
 import LiveTwin from './pages/LiveTwin';
@@ -9,6 +9,7 @@ import Architecture from './pages/Architecture';
 import Copilot from './pages/Copilot';
 import Background from './components/Background';
 import BootScreen from './components/BootScreen';
+import Logo from './components/Logo';
 
 const PAGES = [
   { id: 'fleet', label: 'Fleet Command', icon: LayoutGrid },
@@ -95,19 +96,22 @@ export default function App() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-logo"><Plane size={20} /></div>
+          <div className="brand-logo"><Logo /></div>
           <div>
             <div className="brand-name">AeroTwin</div>
             <div className="brand-sub">Engine Digital Twin</div>
           </div>
         </div>
-        {PAGES.map((p) => (
-          <button key={p.id} className={`nav-btn ${page === p.id ? 'active' : ''}`} onClick={() => go(p.id)}>
-            <p.icon size={18} /> {p.label}
-          </button>
-        ))}
+        <nav className="nav-list" aria-label="Pages">
+          <span className="nav-ind" style={{ '--i': PAGES.findIndex((p) => p.id === page) }} />
+          {PAGES.map((p) => (
+            <button key={p.id} className={`nav-btn ${page === p.id ? 'active' : ''}`} aria-current={page === p.id ? 'page' : undefined} onClick={() => go(p.id)}>
+              <p.icon size={18} /> {p.label}
+            </button>
+          ))}
+        </nav>
         <div className="sidebar-foot">
-          <div><span className="live-dot" />Backend connected</div>
+          <div className="conn"><span className={`live-dot ${error ? 'down' : ''}`} />{error ? 'Backend unreachable' : 'Backend connected'}</div>
           <div style={{ marginTop: 6 }}>Predictive health monitoring for MALE-UAV aero-piston engines (Rotax 912 class).</div>
         </div>
       </aside>

@@ -94,7 +94,7 @@ export default function BayesianTwin({ timeline, idx, truth, showTruth, maxT }) 
           {shown.map(([k, p]) => (
             <div key={k} className="diag-bar" style={{ gridTemplateColumns: '96px 1fr 48px' }}>
               <span>{HYP_LABEL[k]}</span>
-              <div className="track"><div className="fill" style={{ width: `${p * 100}%`, background: k === 'healthy' ? 'var(--ok)' : p > 0.5 ? 'var(--crit)' : 'var(--accent-2)' }} /></div>
+              <div className="track"><div className="fill" style={{ '--v': p, background: k === 'healthy' ? 'var(--ok)' : p > 0.5 ? 'var(--crit)' : 'var(--accent-2)' }} /></div>
               <b className="mono" style={{ fontSize: 11 }}>{(p * 100).toFixed(p < 0.01 && p > 0 ? 2 : 1)}%</b>
             </div>
           ))}

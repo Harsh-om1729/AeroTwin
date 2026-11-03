@@ -4,9 +4,9 @@ import {
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  Activity, Atom, Brain, CircleAlert, CircleCheck, CircleX, Clock, Cpu, Droplet, Eye, FastForward, FileText,
+  Activity, Atom, Brain, CircleAlert, CircleCheck, CircleX, Clock, Cpu, Droplet, Eye, FileText,
   Fuel, Gauge as GaugeIcon, Layers, Mountain, Pause, Play, RotateCcw, ShieldCheck, Siren, Thermometer,
-  TriangleAlert, Waves, Wrench,
+  SkipForward, TriangleAlert, Waves, Wrench,
 } from 'lucide-react';
 import Gauge from './Gauge';
 import EngineDiagram from './EngineDiagram';
@@ -28,7 +28,7 @@ const SIGNALS = {
   oil_temp_c: { label: 'Oil temperature', unit: '°C', key: 'oil_temp_c', exp: 'oil_temp_c' },
   vib_rms_g: { label: 'Vibration', unit: 'g RMS', key: 'vib_rms_g', exp: 'vib_rms_g' },
 };
-const CYL_COLORS = ['#38bdf8', '#f472b6', '#a3e635', '#fbbf24'];
+const CYL_COLORS = ['#04A1D8', '#FE20AA', '#75A60F', '#9F73FF'];
 
 const Z_CHANNELS = [
   ['oil_press_bar', 'Oil P'], ['oil_temp_c', 'Oil T'], ['fuel_flow_lph', 'Fuel'], ['vib_rms_g', 'Vib'],
@@ -147,6 +147,13 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
     return () => clearInterval(id);
   }, [running, speed, n]);
 
+  // The backdrop follows the advisor: see .bg-sky in index.css.
+  const skyState = timeline[Math.min(idx, n - 1)]?.advisor.decision;
+  useEffect(() => {
+    document.documentElement.dataset.sky = skyState;
+    return () => { delete document.documentElement.dataset.sky; };
+  }, [skyState]);
+
   const events = useMemo(() => buildEvents(timeline), [timeline]);
   const maxT = timeline[n - 1]?.t ?? 3600;
   const cur = timeline[Math.min(idx, n - 1)];
@@ -220,7 +227,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
 
   const xAxis = <XAxis dataKey="t" type="number" domain={[0, maxT]} tickFormatter={clock} ticks={[0, 600, 1200, 1800, 2400, 3000, 3600].filter((x) => x <= maxT)} />;
   const truthLines = showTruth && truth?.fault_start_t != null ? [
-    <ReferenceArea key="ra" x1={truth.fault_start_t} x2={Math.min(truth.failure_t, maxT)} fill="rgba(245,158,11,.06)" />,
+    <ReferenceArea key="ra" x1={truth.fault_start_t} x2={Math.min(truth.failure_t, maxT)} fill="rgba(255,197,61,.1)" />,
     <ReferenceLine key="on" x={truth.fault_start_t} stroke="var(--warn)" strokeDasharray="4 3" label={{ value: 'fault onset (truth)', fill: 'var(--warn)', fontSize: 10, position: 'insideTopRight' }} />,
     truth.failure_t <= maxT && <ReferenceLine key="fl" x={truth.failure_t} stroke="var(--crit)" strokeDasharray="4 3" label={{ value: 'failure (truth)', fill: 'var(--crit)', fontSize: 10, position: 'insideTopLeft' }} />,
   ] : [];
@@ -237,17 +244,17 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
       </div>
       {/* playback */}
       <div className="panel playbar">
-        <button className="btn icon primary" onClick={() => { if (idx >= n - 1) { setIdx(0); setPlaying(true); } else setPlaying(!running); }} title={running ? 'Pause' : 'Play'}>
+        <button className="btn icon primary" onClick={() => { if (idx >= n - 1) { setIdx(0); setPlaying(true); } else setPlaying(!running); }} title={running ? 'Pause' : 'Play'} aria-label={running ? 'Pause' : 'Play'}>
           {running ? <Pause size={18} /> : <Play size={18} />}
         </button>
-        <button className="btn icon" onClick={() => { setIdx(0); setPlaying(true); }} title="Restart"><RotateCcw size={16} /></button>
+        <button className="btn icon" onClick={() => { setIdx(0); setPlaying(true); }} title="Restart" aria-label="Restart"><RotateCcw size={16} /></button>
         <div>
           <div className="clock">T+{clock(cur.t)}<span className={`rec-chip ${running ? '' : 'paused'}`}><i />{running ? 'REPLAY' : 'PAUSED'}</span></div>
           <div className="dim" style={{ fontSize: 11 }}>{title}{subtitle ? ` · ${subtitle}` : ''}</div>
           <div className="kbd-hint" style={{ marginTop: 3 }}><kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> step · <kbd>⇧</kbd> ×10</div>
         </div>
         <div className="scrub">
-          <input type="range" min={0} max={n - 1} value={idx} onChange={(e) => { setIdx(+e.target.value); setPlaying(false); }} />
+          <input type="range" aria-label="Flight position" style={{ '--p': `${(idx / Math.max(1, n - 1)) * 100}%` }} min={0} max={n - 1} value={idx} onChange={(e) => { setIdx(+e.target.value); setPlaying(false); }} />
           <div className="scrub-marks">
             {marks.map((m) => (
               <div key={m.label} className="scrub-mark" style={{ left: `${(Math.min(m.t, maxT) / maxT) * 100}%`, background: m.color }}>
@@ -261,8 +268,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
             <button key={s.label} className={speed === i ? 'on' : ''} onClick={() => setSpeed(i)}>{s.label}</button>
           ))}
         </div>
-        <FastForward size={14} className="dim" />
-        <button className="btn icon" title="Jump to end of flight" onClick={() => { setIdx(n - 1); setPlaying(false); }}>⏭</button>
+        <button className="btn icon" title="Jump to end of flight" aria-label="Jump to end of flight" onClick={() => { setIdx(n - 1); setPlaying(false); }}><SkipForward size={16} /></button>
         {truth?.fault_type && (
           <label className="toggle" title="Overlay the simulator's hidden ground truth (fault onset & failure time)">
             <input type="checkbox" checked={showTruth} onChange={(e) => setShowTruth(e.target.checked)} />
@@ -275,7 +281,6 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
       {/* top row */}
       <div className="twin-top mt">
         <div className="panel">
-          {running && <div className="scan" />}
           <div className="panel-title"><Cpu size={15} /> Engine twin <span className="right badge b-mute">{cur.phase || '—'}</span></div>
           <EngineDiagram row={cur} flaggedCyl={flagCyl} flaggedSystem={flagFault} />
         </div>
@@ -283,13 +288,13 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
         <div className="panel">
           <div className="panel-title"><Activity size={15} /> Health & prognostics</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-            <div style={{ fontSize: 56, fontWeight: 800, color: hiColor(cur.hi_smooth), letterSpacing: -2, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+            <div className="hi-big" style={{ color: hiColor(cur.hi_smooth) }}>
               {cur.hi_smooth.toFixed(0)}
             </div>
             <div className="muted" style={{ fontSize: 13 }}>Health Index<br /><span className="dim">0 = failed · 100 = as-new</span></div>
           </div>
-          <div style={{ height: 8, background: 'var(--bg-2)', borderRadius: 4, margin: '12px 0 8px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${cur.hi_smooth}%`, background: hiColor(cur.hi_smooth), transition: 'width .25s, background .25s', borderRadius: 4 }} />
+          <div className="hi-bar">
+            <div style={{ transform: `scaleX(${cur.hi_smooth / 100})`, background: hiColor(cur.hi_smooth) }} />
           </div>
           <div className="stat-row"><span>Remaining useful life</span>{twinRul
             ? <b style={{ color: 'var(--warn)' }}>≈ {fmtDur(twinRul.p50)} <span className="dim" style={{ fontWeight: 400 }}>({fmtDur(twinRul.p5)}–{fmtDur(twinRul.p95)})</span></b>
@@ -300,7 +305,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
           <div className="stat-row"><span>ML ensemble alert</span>{cur.alert ? <span className="badge b-crit">Alert</span> : cur.alert_latched ? <span className="badge b-crit">Latched</span> : cur.degrading ? <span className="badge b-warn">Degrading</span> : <span className="badge b-ok">Nominal</span>}</div>
           <div className="stat-row"><span>Altitude · Throttle</span><b>{cur.altitude_ft.toFixed(0)} ft · {cur.throttle_pct.toFixed(0)}%</b></div>
           <div className={`decision d-${cur.advisor.decision} mt`}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, opacity: .85 }}>NEXT-MISSION ADVISOR</div>
+            <div className="decision-label">Next-mission advisor</div>
             <h3>{cur.advisor.decision === 'GO' ? <ShieldCheck /> : cur.advisor.decision === 'CAUTION' ? <TriangleAlert /> : <CircleX />}{cur.advisor.decision}</h3>
             <ul>{cur.advisor.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
           </div>
@@ -310,14 +315,14 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
           <div className="panel-title"><Brain size={15} /> Fault signature check</div>
           {diag ? (
             <div className="diag-box">
-              <div className="dim" style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>MOST LIKELY FAULT</div>
+              <div className="diag-kicker">Most likely fault</div>
               <div className="diag-name">{diag.label}{diag.cylinder ? ` · Cyl ${diag.cylinder}` : ''}</div>
               <div style={{ fontSize: 12.5, marginTop: 6 }} className="muted">{diag.evidence}</div>
               <div style={{ marginTop: 10 }}>
                 {Object.entries(diag.scores).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
                   <div key={k} className="diag-bar">
                     <span>{FAULT_SHORT[k]}</span>
-                    <div className="track"><div className="fill" style={{ width: `${(v / maxScore) * 100}%`, background: k === diag.fault ? 'var(--crit)' : 'var(--border-2)' }} /></div>
+                    <div className="track"><div className="fill" style={{ '--v': v / maxScore, background: k === diag.fault ? 'var(--crit)' : 'var(--border-2)' }} /></div>
                     <b className="mono" style={{ fontSize: 11 }}>{v.toFixed(1)}σ</b>
                   </div>
                 ))}
@@ -387,13 +392,13 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
                 <CartesianGrid strokeDasharray="3 3" />
                 {xAxis}
                 <YAxis domain={[0, 100]} />
-                <ReferenceArea y1={0} y2={50} fill="rgba(239,68,68,.05)" />
+                <ReferenceArea y1={0} y2={50} fill="rgba(255,84,104,.1)" />
                 <ReferenceLine y={80} stroke="var(--warn)" strokeDasharray="4 3" />
                 <ReferenceLine y={50} stroke="var(--crit)" strokeDasharray="4 3" />
                 {truthLines}
                 {alertVisible && <ReferenceLine x={firstAlert.t} stroke="var(--accent)" label={{ value: 'first alert', fill: 'var(--accent)', fontSize: 10, position: 'insideBottomLeft' }} />}
                 <Tooltip content={<ChartTip />} />
-                <Line dataKey="hi" name="HI raw" stroke="rgba(147,164,195,.45)" dot={false} strokeWidth={1} isAnimationActive={false} />
+                <Line dataKey="hi" name="HI raw" stroke="rgba(216,208,242,.5)" dot={false} strokeWidth={1} isAnimationActive={false} />
                 <Area dataKey="hi_smooth" name="HI" stroke="var(--accent)" fill="url(#hig)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
@@ -421,7 +426,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
         </div>
       </div>
 
-      <div className="grid mt" style={{ gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)' }}>
+      <div className="grid g-wide mt">
         <div className="panel">
           <div className="panel-title"><Mountain size={15} /> Measured vs digital twin
             <span className="right">
@@ -462,7 +467,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
               <div key={`${e.i}-${e.text}`} className="log-item">
                 <time>T+{clock(e.t)}</time>
                 {EV_ICON[e.kind]}
-                <span style={{ color: e.kind === 'crit' ? '#fecaca' : 'var(--text)' }}>{e.text}</span>
+                <span className={e.kind === 'crit' ? 'log-crit' : undefined}>{e.text}</span>
               </div>
             ))}
           </div>

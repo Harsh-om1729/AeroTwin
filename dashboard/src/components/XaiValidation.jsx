@@ -24,7 +24,7 @@ export default function XaiValidation({ xai }) {
             return (
               <div key={k} className="xai-row" style={{ gridTemplateColumns: '110px 1fr 58px' }}>
                 <span style={{ fontWeight: k === 'ensemble' ? 700 : 400 }}>{label}</span>
-                <div className="track"><div className="fill" style={{ width: `${h.rate * 100}%`, background: color }} /></div>
+                <div className="track"><div className="fill" style={{ '--v': h.rate, background: color }} /></div>
                 <b className="mono">{h.k}/{h.n}</b>
               </div>
             );
@@ -52,7 +52,7 @@ export default function XaiValidation({ xai }) {
                 <div className="heat-row">{FAULT_SHORT[ft]}</div>
                 {row.map((v, i) => (
                   <div key={ch[i]} className="heat-cell" title={`${FAULT_SHORT[ft]} · ${SENSOR_LABEL[ch[i]]}: ${v.toFixed(1)}%`}
-                    style={{ background: `rgba(56,189,248,${Math.min(0.9, v / 100)})`, color: v > 35 ? '#fff' : 'var(--text-3)' }}>
+                    style={{ background: `rgba(255,45,135,${Math.min(0.9, v / 100)})`, color: v > 35 ? '#fff' : 'var(--text-2)' }}>
                     {v >= 5 ? v.toFixed(0) : ''}
                   </div>
                 ))}

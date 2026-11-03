@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { CircleCheck, LoaderCircle, Plane } from 'lucide-react';
+import { CircleCheck, LoaderCircle } from 'lucide-react';
+import Logo from './Logo';
 
 // Shown while the backend replays the fleet through the pipeline. The steps
 // are the real start-up stages of backend/main.py:lifespan.
@@ -20,10 +21,10 @@ export default function BootScreen() {
   return (
     <div className="boot">
       <div className="boot-card">
-        <div className="boot-logo"><Plane size={28} /></div>
+        <div className="boot-logo"><Logo /></div>
         <div className="boot-title">AeroTwin</div>
         <div className="boot-sub">Aero-piston engine digital twin · initialising</div>
-        <div className="boot-bar"><div style={{ width: `${((done + 1) / STEPS.length) * 100}%` }} /></div>
+        <div className="boot-bar"><div style={{ transform: `scaleX(${(done + 1) / STEPS.length})` }} /></div>
         <ul className="boot-steps">
           {STEPS.map((s, i) => (
             <li key={s} className={i < done ? 'ok' : i === done ? 'run' : ''}>

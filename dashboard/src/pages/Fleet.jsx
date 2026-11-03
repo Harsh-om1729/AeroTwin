@@ -5,9 +5,9 @@ import CountUp from '../components/CountUp';
 import FleetRadar from '../components/FleetRadar';
 import { clock, decisionBadge, hiColor, pct, statusBadge } from '../util';
 
-function Kpi({ label, value, note, icon: Icon, color, glow }) {
+function Kpi({ label, value, note, icon: Icon, color, lit }) {
   return (
-    <div className="panel kpi" style={{ '--glow': glow }}>
+    <div className="panel" style={lit ? { '--lit': lit } : undefined}>
       <div className="kpi-label"><Icon size={14} color={color} /> {label}</div>
       <div className="kpi-value" style={{ color }}>{value}</div>
       {note && <div className="kpi-note">{note}</div>}
@@ -29,7 +29,7 @@ function HiRing({ hi }) {
       <circle cx="37" cy="37" r={r} fill="none" strokeWidth="6" className="track" />
       <circle cx="37" cy="37" r={r} fill="none" strokeWidth="6" stroke={color} strokeLinecap="round"
         strokeDasharray={c} strokeDashoffset={c * (1 - shown / 100)} className="val" />
-      <text x="37" y="42" textAnchor="middle" fontSize="18" fontWeight="800" fill={color} fontFamily="Inter">
+      <text x="37" y="42" textAnchor="middle" fontSize="18" fontWeight="700" fill="var(--text)" fontFamily="var(--display)">
         {Math.round(hi)}
       </text>
     </svg>
@@ -54,7 +54,7 @@ export default function Fleet({ fleet, results, onOpen }) {
       <div className="panel hero">
         <div>
           <span className="badge b-info"><span className="live-dot" />Twin online</span>
-          <h1 style={{ marginTop: 12 }}>Fleet Command</h1>
+          <h1>Fleet Command</h1>
           <div className="page-sub">
             Engine health of each MALE-UAV after its last flight. Every card is a simulated test flight, never used in
             training, run end-to-end through the physics twin, the ML ensemble and the Bayesian health twin.
@@ -72,15 +72,15 @@ export default function Fleet({ fleet, results, onOpen }) {
 
       <div className="grid g5 mt stagger">
         <Kpi label="Aircraft" value={<CountUp value={fleet.length} />} note="Rotax 912-class engines" icon={Plane} color="var(--text)" />
-        <Kpi label="Go" value={<CountUp value={count('GO')} />} note="cleared for next mission" icon={CircleCheck} color="var(--ok)" glow="rgba(34,197,94,.14)" />
-        <Kpi label="Caution" value={<CountUp value={count('CAUTION')} />} note="inspect soon" icon={TriangleAlert} color="var(--warn)" glow="rgba(245,158,11,.14)" />
-        <Kpi label="No-Go" value={<CountUp value={count('NO-GO')} />} note="grounded for maintenance" icon={CircleX} color="var(--crit)" glow="rgba(239,68,68,.16)" />
+        <Kpi label="Go" value={<CountUp value={count('GO')} />} note="cleared for next mission" icon={CircleCheck} color="var(--ok)" lit="var(--ok)" />
+        <Kpi label="Caution" value={<CountUp value={count('CAUTION')} />} note="inspect soon" icon={TriangleAlert} color="var(--warn)" lit="var(--warn)" />
+        <Kpi label="No-Go" value={<CountUp value={count('NO-GO')} />} note="grounded for maintenance" icon={CircleX} color="#ff8b98" lit="var(--crit)" />
         <Kpi label="Faults detected" value={s ? <><CountUp value={s.detection.k} />/{s.detection.n}</> : '…'} note={s ? `simulated test flights · 95% CI ≥ ${pct(s.detection.ci95[0])}` : 'computing…'} icon={Target} color="var(--accent)" />
       </div>
 
       <div className="grid g4 mt stagger">
         {fleet.map((f) => (
-          <div key={f.id} className={`panel fleet-card ${f.status === 'critical' ? 'crit' : f.status === 'warning' ? 'warn' : ''}`} onClick={() => onOpen(f.id)}>
+          <div key={f.id} role="button" tabIndex={0} className={`panel fleet-card ${f.status === 'critical' ? 'crit' : f.status === 'warning' ? 'warn' : 'ok'}`} onClick={() => onOpen(f.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(f.id); } }}>
             <div className="fc-top">
               <div>
                 <div className="fc-id">{f.id}</div>
@@ -88,10 +88,10 @@ export default function Fleet({ fleet, results, onOpen }) {
               </div>
               <span className={`badge ${decisionBadge(f.decision)}`}>{f.decision}</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, margin: '12px 0 2px' }}>
+            <div className="fc-hi">
               <HiRing hi={f.hi} />
               <div style={{ minWidth: 0 }}>
-                <div className="dim" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.6px', fontWeight: 600 }}>Health Index</div>
+                <div className="fc-hi-label">Health Index</div>
                 <span className={`badge ${statusBadge(f.status)}`} style={{ marginTop: 6 }}>{f.status}</span>
               </div>
             </div>
@@ -105,7 +105,7 @@ export default function Fleet({ fleet, results, onOpen }) {
                     </linearGradient>
                   </defs>
                   <YAxis hide domain={[0, 100]} />
-                  <ReferenceLine y={50} stroke="rgba(239,68,68,.35)" strokeDasharray="3 3" />
+                  <ReferenceLine y={50} stroke="rgba(255,84,104,.45)" strokeDasharray="3 3" />
                   <Area dataKey="v" stroke={hiColor(f.hi)} fill={`url(#sp-${f.id})`} strokeWidth={2} dot={false} isAnimationActive={false} />
                 </AreaChart>
               </ResponsiveContainer>
@@ -123,7 +123,7 @@ export default function Fleet({ fleet, results, onOpen }) {
                   : <>No rule-based fault signature.<br /><span className="dim">Open the replay for the advisor&apos;s reasons.</span></>
               )}
             </div>
-            <div className="fc-open">Open replay <ChevronRight size={12} style={{ verticalAlign: -2 }} /></div>
+            <div className="fc-open">Open replay <ChevronRight size={13} /></div>
           </div>
         ))}
       </div>

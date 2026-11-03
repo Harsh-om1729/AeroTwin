@@ -10,7 +10,7 @@ function Bars({ data, color, max = 100, rows = 6 }) {
   return items.map(([ch, v]) => (
     <div key={ch} className="xai-row">
       <span>{SENSOR_LABEL[ch] || ch}</span>
-      <div className="track"><div className="fill" style={{ width: `${Math.min(100, (v / max) * 100)}%`, background: color }} /></div>
+      <div className="track"><div className="fill" style={{ '--v': Math.min(1, v / max), background: color }} /></div>
       <b className="mono">{v.toFixed(0)}%</b>
     </div>
   ));

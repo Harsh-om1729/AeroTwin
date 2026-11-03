@@ -134,7 +134,7 @@ export default function FaultLab() {
           </div>
           <div>
             <div className="field-label">3 · Fault onset: T+{clock(onset)}</div>
-            <input type="range" min={300} max={2700} step={30} value={onset} disabled={!fault} onChange={(e) => setOnset(+e.target.value)} />
+            <input type="range" aria-label="Fault onset" style={{ '--p': `${((onset - 300) / 2400) * 100}%` }} min={300} max={2700} step={30} value={onset} disabled={!fault} onChange={(e) => setOnset(+e.target.value)} />
           </div>
           <div>
             <div className="field-label">4 · Mission profile</div>
@@ -146,7 +146,7 @@ export default function FaultLab() {
         <div className="grid g2 mt" style={{ alignItems: 'end' }}>
           <div>
             <div className="field-label">5 · Reality gap: {gap.toFixed(2)} {gap === 0 ? '(engine matches the twin exactly)' : gap < 0.15 ? '(small mismatch)' : '(large mismatch)'}</div>
-            <input type="range" min={0} max={1} step={0.05} value={gap} onChange={(e) => setGap(+e.target.value)} />
+            <input type="range" aria-label="Reality gap" style={{ '--p': `${gap * 100}%` }} min={0} max={1} step={0.05} value={gap} onChange={(e) => setGap(+e.target.value)} />
           </div>
           <label className="toggle" style={{ paddingBottom: 6 }} title="Fly one healthy reference flight of the same engine first and subtract its residual offsets">
             <input type="checkbox" checked={calibrate} disabled={gap === 0} onChange={(e) => setCalibrate(e.target.checked)} />
@@ -172,7 +172,7 @@ export default function FaultLab() {
             <div>
               <div style={{ fontWeight: 800, fontSize: 17 }}>{verdict.title}</div>
               <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{verdict.text}</div>
-              {twinLine && <div style={{ fontSize: 13, marginTop: 6, color: '#c7d2fe' }}><Atom size={13} style={{ verticalAlign: -2 }} /> {twinLine}</div>}
+              {twinLine && <div style={{ fontSize: 13, marginTop: 6, color: 'var(--accent-2)' }}><Atom size={13} style={{ verticalAlign: -2 }} /> {twinLine}</div>}
               {cusumLine && <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{cusumLine}</div>}
             </div>
             <div className="mono dim" style={{ marginLeft: 'auto', fontSize: 11, textAlign: 'right' }}>

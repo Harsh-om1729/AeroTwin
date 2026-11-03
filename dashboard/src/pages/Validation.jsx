@@ -168,7 +168,7 @@ export default function Validation({ results, error }) {
                   const diag = truth === l;
                   return (
                     <div key={l} className="cm-cell" style={{
-                      background: v ? (diag ? `rgba(34,197,94,${0.15 + 0.6 * v / cmMax})` : `rgba(239,68,68,${0.2 + 0.6 * v / cmMax})`) : 'var(--bg-2)',
+                      background: v ? (diag ? `rgba(20,170,120,${0.2 + 0.6 * v / cmMax})` : `rgba(255,60,90,${0.2 + 0.6 * v / cmMax})`) : 'var(--bg-2)',
                       color: v ? '#fff' : 'var(--text-3)',
                     }}>{v}</div>
                   );
