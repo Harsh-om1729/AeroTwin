@@ -103,3 +103,58 @@ def test_flight_table_and_sequences_keep_one_row_per_flight():
     X, order = sequences(res, fl, np.zeros(2), np.ones(2), [0])
     assert X.shape == (2, 1, SEQ_LEN) and order.tolist() == [7, 9]
     assert X[1, 0, -1] == 5.0 and X[1, 0, 0] == 0.0  # padded in front, latest block last
+
+
+def _archive(tmp_path, all_rows, bench_rows):
+    d, a = tmp_path / "2days" / "2days", tmp_path / "all_flights" / "all_flights"
+    d.mkdir(parents=True), a.mkdir(parents=True)
+    pd.DataFrame(all_rows).to_csv(a / "flight_header.csv", index=False)
+    pd.DataFrame(bench_rows).to_csv(d / "flight_header.csv", index=False)
+
+
+def test_full_archive_flights_inherit_their_repair_fold(tmp_path):
+    from aerotwin.real_engine.feature_extraction import FIT_ONLY, load_header_all
+    # repair A: flights 1-4 (benchmark has 2, 3 in fold 3); repair B: 5-6, no benchmark flight
+    _archive(tmp_path,
+             {"Master Index": [1, 2, 3, 4, 5, 6], "label": list("aaaabb"), "hierarchy": [None] * 6,
+              "before_after": ["before", "before", "after", "after", "before", "after"],
+              "date_diff": [-9, -1, 1, 20, -3, 2]},
+             {"Master Index": [2, 3], "before_after": [1, 0], "fold": [3, 3], "hierarchy": [None, None], "label": list("aa")})
+    h = load_header_all(tmp_path).set_index("flight")
+    assert h.loc[[1, 2, 3, 4], "fold"].tolist() == [3, 3, 3, 3]
+    assert h.loc[[5, 6], "fold"].tolist() == [FIT_ONLY, FIT_ONLY]
+    assert h.loc[[2, 3], "in_benchmark"].all() and not h.loc[[1, 4], "in_benchmark"].any()
+
+
+def test_full_archive_drops_repairs_spanning_folds(tmp_path):
+    from aerotwin.real_engine.feature_extraction import load_header_all
+    _archive(tmp_path,
+             {"Master Index": [1, 2, 3], "label": list("aaa"), "hierarchy": [None] * 3,
+              "before_after": ["before", "before", "after"], "date_diff": [-5, -1, 1]},
+             {"Master Index": [2, 3], "before_after": [1, 0], "fold": [3, 4], "hierarchy": [None, None], "label": list("aa")})
+    assert load_header_all(tmp_path).empty
+
+
+def test_fit_only_flights_never_reach_the_evaluation_folds():
+    from aerotwin.evaluation.real_leadtime import fit_header
+    from aerotwin.real_engine.feature_extraction import FIT_ONLY
+    h = pd.DataFrame({"flight": [1, 2, 3], "fold": [FIT_ONLY, 3, 4], "before": [0, 0, 1]})
+    assert fit_header(h)["fold"].tolist() == [0, 3, 4]
+
+
+def test_trend_test_finds_a_score_that_rises_towards_the_repair():
+    from aerotwin.evaluation.real_leadtime import SCORES, trend_test
+    rng = np.random.default_rng(0)
+    rows = []
+    for g in range(30):
+        for day in range(-10, 0):
+            rows.append({"event_group": g, "before_after": "before", "date_diff": day,
+                         **{s: day + rng.normal(0, 1) for s in SCORES}})
+    t = trend_test(pd.DataFrame(rows))
+    assert all(t[s]["mean_rho"] > 0.5 and t[s]["wilcoxon_p"] < 0.01 for s in SCORES)
+
+
+def test_every_day_falls_in_exactly_one_lead_time_bin():
+    from aerotwin.evaluation.real_leadtime import BINS, _bin
+    for day in range(-108, 71):
+        assert sum(lo <= day <= hi for lo, hi, _ in BINS) == 1 and _bin(day)

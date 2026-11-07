@@ -1,0 +1,75 @@
+/* AeroTwin design tokens: Glassmorphism 2.0 structure (plan §2) in the
+   ice silver / deep aubergine / marigold palette. */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg-0: #170a1f;
+  --bg-1: #22102e;
+  /* Frosted glass: a translucent aubergine body plus a silver sheen. Low
+     alpha so the light behind reads through the blur. */
+  --glass-1: rgba(48, 24, 64, .40);
+  --glass-2: rgba(52, 26, 70, .44);
+  --glass-tile: rgba(48, 24, 64, .34);
+  --glass-inset: rgba(18, 8, 26, .42);
+  --sheen: linear-gradient(135deg, rgba(236, 242, 248, .13), rgba(236, 242, 248, .03) 42%, rgba(236, 242, 248, 0) 60%, rgba(236, 242, 248, .05));
+
+  /* Borders */
+  /* Ice-silver edges catch the light like glass */
+  --line-1: rgba(226, 234, 242, .10);
+  --line-2: rgba(226, 234, 242, .18);
+  --line-3: rgba(226, 234, 242, .30);
+  --highlight-top: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, .02);
+
+  /* Accents: marigold (action, selection, live data) and ice silver.
+     Caution is a clear yellow so it never reads as the marigold accent. */
+  --accent: #f6a623;
+  --accent-2: #d6e0ea;
+  --go: #2dd4a7;
+  --caution: #facc15;
+  --nogo: #ff8fa0;
+  --go-a12: rgba(45, 212, 167, .12);
+  --caution-a12: rgba(250, 204, 21, .12);
+  --nogo-a12: rgba(251, 100, 123, .12);
+  --accent-a12: rgba(246, 166, 35, .12);
+
+  /* Text: ice silver, tinted toward the aubergine for the quieter tiers. */
+  --text-1: #f4f6f9;
+  --text-2: #d2ccda;
+  --text-3: #c0b8cc;
+
+  /* Radius */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-2xl: 24px; --r-pill: 999px;
+
+  /* Spacing, 4px grid */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px;
+
+  /* Shadows */
+  --shadow-1: 0 1px 2px rgba(10, 2, 16, .30), 0 6px 18px rgba(10, 2, 16, .28);
+  --shadow-2: 0 2px 4px rgba(10, 2, 16, .30), 0 14px 34px rgba(10, 2, 16, .38);
+  --shadow-3: 0 4px 8px rgba(10, 2, 16, .35), 0 26px 58px rgba(10, 2, 16, .45);
+
+  /* Motion */
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --t-fast: 150ms; --t-base: 240ms; --t-slow: 600ms;
+
+  /* Type: the faces the project already self-hosts (plan §2 note) */
+  --font-sans: 'Onest Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'Onest Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* Aliases kept for existing components */
+  --text: var(--text-1);
+  --ok: var(--go);
+  --warn: var(--caution);
+  --crit: var(--nogo);
+  --bg: var(--bg-0);
+  --bg-2: var(--glass-inset);
+  --panel: rgba(255, 255, 255, .04);
+  --panel-2: var(--glass-inset);
+  --border: var(--line-2);
+  --border-2: var(--line-3);
+  --grid: rgba(214, 224, 234, .10);
+  --mono: var(--font-mono);
+  --radius: var(--r-xl);
+}

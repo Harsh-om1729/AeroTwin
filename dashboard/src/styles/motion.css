@@ -1,0 +1,25 @@
+/* Motion (plan §9). CSS only. Transform and opacity; opacity is never put on
+   an ancestor of a glass surface, because that switches its blur off. */
+
+.page-anim { animation: pageIn var(--t-base) var(--ease-out) backwards; }
+.page-anim .panel, .page-anim .glass-stage, .page-anim .glass-tile, .page-anim .glass-module {
+  animation: fadeUp 400ms var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.stagger > :nth-child(2) { --i: 1; } .stagger > :nth-child(3) { --i: 2; } .stagger > :nth-child(4) { --i: 3; }
+.stagger > :nth-child(5) { --i: 4; } .stagger > :nth-child(6) { --i: 5; } .stagger > :nth-child(7) { --i: 6; }
+.stagger > :nth-child(n+8) { --i: 7; }
+
+@keyframes pageIn { from { transform: translateY(8px); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } }
+@keyframes pulse-ring { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(2.6); opacity: 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes toastIn { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+@keyframes logIn { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes propblur { 0% { transform: scaleX(1); } 25% { transform: scaleX(.05); } 50% { transform: scaleX(-1); } 75% { transform: scaleX(.05); } 100% { transform: scaleX(1); } }
+@keyframes shake { 0% { transform: translate(0, 0); } 25% { transform: translate(var(--sx), 0); } 50% { transform: translate(0, var(--sx)); } 75% { transform: translate(calc(-1 * var(--sx)), 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

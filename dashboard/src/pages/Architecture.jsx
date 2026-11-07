@@ -1,5 +1,6 @@
 import { Fragment } from 'react';
-import { Atom, ChevronRight, Database, Info, Layers, Network, TriangleAlert, Workflow } from 'lucide-react';
+import { Atom, BookA, BrainCircuit, ChevronRight, Copy, Database, Gauge, Info, Layers, Network, Radio, TriangleAlert, Workflow } from 'lucide-react';
+import { useSimple } from '../ui/viewContext';
 
 const STEPS = [
   { n: '01', t: 'Engine telemetry', d: '17 sensors at 1 Hz: RPM, throttle, altitude, oil P/T, 4× CHT, 4× EGT, fuel flow, vibration, alternator.' },
@@ -28,8 +29,75 @@ const DATA = [
   ['Test (fault)', 'seed block 5', '60 flights', '5 fault types × 12', 'Detection, diagnosis, RUL (final, never tuned on)'],
 ];
 
+const SIMPLE_STEPS = [
+  { icon: Radio, t: 'Sensors listen', d: '17 sensors measure the engine every second: temperatures, oil pressure, fuel flow, shaking and more.' },
+  { icon: Copy, t: 'A perfect copy predicts', d: 'A computer copy of a healthy engine (the "digital twin") works out what each sensor should read right now, for this height, power and weather.' },
+  { icon: BrainCircuit, t: 'AI spots the difference', d: 'AI models that only ever saw healthy flights compare the real readings with the copy. A growing gap means a part is wearing out.' },
+  { icon: Gauge, t: 'A clear answer', d: 'The system gives a health score from 0 to 100, names the likely problem, estimates the time left, and says GO or NO-GO.' },
+];
+
+const GLOSSARY = [
+  ['Digital twin', 'A computer copy of the engine that knows how a healthy engine behaves, used as the reference.'],
+  ['Health score (Health Index)', 'One number from 0 to 100 for how healthy the engine looks. 100 is like new; staying below 50 sets off a warning.'],
+  ['GO / NO-GO', 'The final answer for the next flight: GO means safe to fly, NO-GO means repair first. CAUTION means check it soon.'],
+  ['Fault', 'Something going wrong in the engine, such as low oil pressure, overheating or a bad spark plug.'],
+  ['Time left (RUL)', 'Remaining useful life: an estimate of how long the faulty part can keep working before it fails.'],
+  ['False alarm', 'A warning on an engine that is actually healthy. A good system raises very few.'],
+  ['Simulated flight', 'A flight created by a computer model instead of a real drone, so the true problem is known and answers can be checked.'],
+  ['AI ensemble', 'Three different AI models that each judge the engine; their answers are averaged so one model’s mistake matters less.'],
+  ['Bayesian twin', 'A second checker that estimates how worn each part is and how sure it is, often spotting trouble before the AI models.'],
+];
+
+function SimpleHow() {
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <h1 className="page-title">How it works</h1>
+          <div className="page-sub">
+            Think of a doctor checking your temperature: they compare it with the normal 37 °C. AeroTwin does the same for a
+            drone engine. It knows what a healthy engine should read at every moment, and raises a warning when the real engine
+            stops matching.
+          </div>
+        </div>
+      </div>
+      <div className="panel">
+        <div className="panel-title"><Workflow size={15} /> Four steps, every second of the flight</div>
+        <ol className="steps4">
+          {SIMPLE_STEPS.map((s) => (
+            <li key={s.t} className="step4">
+              <span className="step4-icon"><s.icon size={20} /></span>
+              <h4>{s.t}</h4>
+              <p>{s.d}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="grid g-wide mt">
+        <div className="panel">
+          <div className="panel-title"><BookA size={15} /> Words you will see</div>
+          <dl className="glossary">
+            {GLOSSARY.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+          </dl>
+        </div>
+        <div className="panel honest">
+          <div className="panel-title"><TriangleAlert size={15} /> What it cannot do yet</div>
+          <ul className="plain-list">
+            <li>It has been tested on <b>computer-simulated</b> flights. Real engines are messier, so real accuracy will be lower.</li>
+            <li>It looks for <b>one problem at a time</b>, and it does not yet notice a broken sensor.</li>
+            <li>It helps engineers decide. It is <b>not</b> a certified safety system.</li>
+          </ul>
+          <div className="plain-note">Switch to <b>Detailed</b> view at the top of the page for the full technical design.</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function Architecture({ meta }) {
+  const simple = useSimple();
   const e = meta?.engine;
+  if (simple) return <SimpleHow />;
   return (
     <>
       <div className="page-head">

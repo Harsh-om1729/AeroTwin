@@ -3,8 +3,10 @@ import { Bot, LoaderCircle } from 'lucide-react';
 import { api } from '../api';
 import TwinViewer from '../components/TwinViewer';
 import { decisionBadge } from '../util';
+import { useSimple } from '../ui/viewContext';
 
 export default function LiveTwin({ fleet, selected, onSelect }) {
+  const simple = useSimple();
   const id = selected || fleet[0]?.id;
   // keyed by aircraft id, so switching aircraft shows the loader instead of stale data
   const [loaded, setLoaded] = useState({ id: null, data: null, error: null });
@@ -24,19 +26,26 @@ export default function LiveTwin({ fleet, selected, onSelect }) {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Digital Twin Replay</h1>
+          <h1 className="page-title">{simple ? 'Flight replay' : 'Digital Twin Replay'}</h1>
+          {simple ? (
+            <div className="page-sub">
+              Watch a one-hour drone flight play back (computer-simulated). Press <b>play</b> or drag the slider. As the flight goes on,
+              the engine picture, the health score and the <b>GO / NO-GO</b> decision update, so you can see the moment a problem is spotted.
+            </div>
+          ) : (
           <div className="page-sub">
             Replay of a recorded (simulated) test flight through the full pipeline: physics twin → residuals → Isolation Forest / PCA / LSTM autoencoder →
             fused Health Index → RUL → fault diagnosis → Go/No-Go. One step = one 60 s window advanced by 10 s.
           </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span className="dim" style={{ fontSize: 12 }}>Aircraft</span>
+          <span className="dim" style={{ fontSize: 12 }}>{simple ? 'Choose a drone' : 'Aircraft'}</span>
           <select value={id} onChange={(e) => onSelect(e.target.value)}>
             {fleet.map((f) => <option key={f.id} value={f.id}>{f.id} · {f.callsign} · {f.decision}</option>)}
           </select>
           {data && <span className={`badge ${decisionBadge(data.summary.decision)}`}>{data.summary.decision}</span>}
-          <a className="btn" href={`#/copilot/${id}`}><Bot size={15} /> Ask AI Copilot</a>
+          <a className="btn" href={`#/copilot/${id}`}><Bot size={15} /> {simple ? 'Ask the AI about it' : 'Ask AI Copilot'}</a>
         </div>
       </div>
       {error && <div className="panel" style={{ color: 'var(--crit)' }}>Failed to load: {error}</div>}

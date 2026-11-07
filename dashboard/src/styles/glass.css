@@ -1,0 +1,68 @@
+/* Glass elevation system and ambient canvas (plan §3). Only top-level surfaces
+   blur; anything nested inside them uses .glass-well or a flat tint. */
+
+body { background: var(--bg-0); color: var(--text-1); }
+
+.app-ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(760px 560px at 88% -6%, rgba(246, 166, 35, .34), transparent 62%),
+    radial-gradient(900px 700px at -4% 18%, rgba(126, 44, 128, .55), transparent 64%),
+    radial-gradient(820px 640px at 18% 108%, rgba(214, 224, 234, .16), transparent 62%),
+    radial-gradient(700px 520px at 72% 82%, rgba(156, 54, 110, .40), transparent 66%),
+    radial-gradient(520px 360px at 50% 46%, rgba(246, 166, 35, .08), transparent 70%),
+    linear-gradient(160deg, #22102e, #170a1f 55%, #1d0c27);
+}
+.app-ambient::after { content: ''; position: absolute; inset: 0; opacity: .3;
+  background-image: linear-gradient(var(--line-1) 1px, transparent 1px), linear-gradient(90deg, var(--line-1) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse at 60% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 60% 30%, #000 20%, transparent 75%);
+}
+/* Twin Replay sets <html data-sky> from the advisor decision; a faint light of
+   that state's colour fades in behind the glass. */
+.ambient-state { position: absolute; inset: 0; opacity: 0; transition: opacity var(--t-slow) var(--ease-out); }
+.ambient-go { background: radial-gradient(900px 600px at 80% 0%, rgba(45, 212, 167, .16), transparent 65%); }
+.ambient-caution { background: radial-gradient(900px 600px at 80% 0%, rgba(250, 204, 21, .11), transparent 65%); }
+.ambient-nogo { background: radial-gradient(1000px 700px at 80% 0%, rgba(251, 100, 123, .15), transparent 65%); }
+html[data-sky='GO'] .ambient-go, html[data-sky='CAUTION'] .ambient-caution, html[data-sky='NO-GO'] .ambient-nogo { opacity: 1; }
+
+/* Shared glass recipe */
+.glass, .panel, .glass-rail, .glass-stage, .glass-tile, .glass-module {
+  position: relative;
+  -webkit-backdrop-filter: blur(var(--blur, 20px)) saturate(165%);
+          backdrop-filter: blur(var(--blur, 20px)) saturate(165%);
+}
+
+/* L1 rail */
+.glass-rail { --blur: 28px; background: var(--sheen), rgba(30, 14, 42, .5); border-right: 1px solid var(--line-1); }
+
+/* Generic page panel: same material as L4 */
+.panel { --blur: 20px; background: var(--sheen), var(--glass-2); border: 1px solid var(--line-2); border-radius: var(--r-xl);
+  box-shadow: var(--highlight-top), var(--shadow-2); padding: var(--s-5); min-width: 0; }
+
+/* L2 stage */
+.glass-stage, .panel.glass-stage { --blur: 24px; background: var(--sheen), var(--glass-1); border: 1px solid var(--line-2);
+  border-radius: var(--r-2xl); box-shadow: var(--highlight-top), var(--shadow-3); }
+
+/* L3 tile */
+.glass-tile, .panel.kpi { --blur: 16px; background: var(--sheen), var(--glass-tile); border: 1px solid var(--line-1);
+  border-radius: var(--r-lg); box-shadow: var(--highlight-top), var(--shadow-1); }
+
+/* L4 module */
+.glass-module { --blur: 20px; background: var(--sheen), var(--glass-2); border: 1px solid var(--line-2);
+  border-radius: var(--r-xl); box-shadow: var(--highlight-top), var(--shadow-2); }
+
+/* Inset well: never blurs */
+.glass-well { background: var(--glass-inset); border: 1px solid var(--line-1); border-radius: var(--r-md);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel, .glass-stage, .glass-tile, .glass-module, .panel.kpi { background: #331a45; }
+  .glass-rail { background: #22102e; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .panel, .glass-stage, .glass-tile, .glass-module, .glass-rail, .panel.kpi { background: #331a45; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@media (max-width: 767px) {
+  .panel, .glass-rail, .glass-stage, .glass-tile, .glass-module { --blur: 12px; }
+}

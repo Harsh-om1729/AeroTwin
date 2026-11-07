@@ -13,6 +13,9 @@ import EngineDiagram from './EngineDiagram';
 import BayesianTwin from './BayesianTwin';
 import XaiPanel from './XaiPanel';
 import { FAULT_SHORT, HYP_LABEL, MODEL_COLORS, clock, fmtDur, hiColor } from '../util';
+import { Term } from '../ui/viewMode';
+import { useSimple } from '../ui/viewContext';
+import { PLAIN_FAULT, plainReason } from '../ui/plain';
 
 const SPEEDS = [
   { label: '1×', wps: 2 },
@@ -22,11 +25,11 @@ const SPEEDS = [
 ];
 
 const SIGNALS = {
-  cht: { label: 'CHT (per cylinder)', unit: '°C', cyl: 'cht', exp: 'cht' },
-  egt: { label: 'EGT (per cylinder)', unit: '°C', cyl: 'egt', exp: 'egt' },
-  oil_press_bar: { label: 'Oil pressure', unit: 'bar', key: 'oil_press_bar', exp: 'oil_press_bar' },
-  oil_temp_c: { label: 'Oil temperature', unit: '°C', key: 'oil_temp_c', exp: 'oil_temp_c' },
-  vib_rms_g: { label: 'Vibration', unit: 'g RMS', key: 'vib_rms_g', exp: 'vib_rms_g' },
+  cht: { label: 'CHT (per cylinder)', plain: 'Cylinder heat', unit: '°C', cyl: 'cht', exp: 'cht' },
+  egt: { label: 'EGT (per cylinder)', plain: 'Exhaust heat', unit: '°C', cyl: 'egt', exp: 'egt' },
+  oil_press_bar: { label: 'Oil pressure', plain: 'Oil pressure', unit: 'bar', key: 'oil_press_bar', exp: 'oil_press_bar' },
+  oil_temp_c: { label: 'Oil temperature', plain: 'Oil temperature', unit: '°C', key: 'oil_temp_c', exp: 'oil_temp_c' },
+  vib_rms_g: { label: 'Vibration', plain: 'Shaking', unit: 'g RMS', key: 'vib_rms_g', exp: 'vib_rms_g' },
 };
 const CYL_COLORS = ['#04A1D8', '#FE20AA', '#75A60F', '#9F73FF'];
 
@@ -57,26 +60,29 @@ function buildEvents(tl) {
     if (r.twin && r.twin.p_degraded > 0.95 && !twinDet) {
       const m = r.twin.map;
       const key = m.cylinder ? `${m.fault}:${m.cylinder}` : m.fault;
-      ev.push({ i, t: r.t, kind: 'twin', text: `Bayesian twin: ${HYP_LABEL[key]} degraded (P=${(r.twin.p_degraded * 100).toFixed(0)}%, health ${r.twin.health.p50.toFixed(2)})` });
+      ev.push({ i, t: r.t, kind: 'twin', text: `Bayesian twin: ${HYP_LABEL[key]} degraded (P=${(r.twin.p_degraded * 100).toFixed(0)}%, health ${r.twin.health.p50.toFixed(2)})`,
+        plain: `First sign of trouble: ${HYP_LABEL[key]} is wearing out (${(r.twin.p_degraded * 100).toFixed(0)}% sure)` });
       twinDet = true;
     }
     if (r.phase && r.phase !== phase) {
-      ev.push({ i, t: r.t, kind: 'info', text: `Flight phase: ${r.phase.toUpperCase()}` });
+      ev.push({ i, t: r.t, kind: 'info', text: `Flight phase: ${r.phase.toUpperCase()}`, plain: `Drone is now in ${r.phase}` });
       phase = r.phase;
     }
-    if (r.degrading && !degr) ev.push({ i, t: r.t, kind: 'warn', text: `Health degrading – HI ${r.hi.toFixed(0)} below 80 (sustained)` });
+    if (r.degrading && !degr) ev.push({ i, t: r.t, kind: 'warn', text: `Health degrading – HI ${r.hi.toFixed(0)} below 80 (sustained)`, plain: `Health score dropped below 80 (now ${r.hi.toFixed(0)}) and is staying low` });
     degr = r.degrading;
     if (r.diagnosis && r.diagnosis.fault !== diag) {
       ev.push({
         i, t: r.t, kind: 'diag',
         text: `Diagnosis: ${r.diagnosis.label}${r.diagnosis.cylinder ? `, cylinder ${r.diagnosis.cylinder}` : ''} (${(r.diagnosis.confidence * 100).toFixed(0)}% conf.)`,
+        plain: `Problem named: ${PLAIN_FAULT[r.diagnosis.fault] || r.diagnosis.label}${r.diagnosis.cylinder ? `, cylinder ${r.diagnosis.cylinder}` : ''} (${(r.diagnosis.confidence * 100).toFixed(0)}% sure)`,
       });
       diag = r.diagnosis.fault;
     }
-    if (r.alert && !alert) ev.push({ i, t: r.t, kind: 'crit', text: `ALERT – Health Index below 50 for 8 consecutive windows` });
+    if (r.alert && !alert) ev.push({ i, t: r.t, kind: 'crit', text: `ALERT – Health Index below 50 for 8 consecutive windows`, plain: 'Warning: health score stayed below 50 for over a minute' });
     alert = r.alert;
     if (r.advisor.decision !== dec) {
-      if (dec !== null) ev.push({ i, t: r.t, kind: r.advisor.decision === 'GO' ? 'ok' : r.advisor.decision === 'CAUTION' ? 'warn' : 'crit', text: `Mission advisor → ${r.advisor.decision}` });
+      if (dec !== null) ev.push({ i, t: r.t, kind: r.advisor.decision === 'GO' ? 'ok' : r.advisor.decision === 'CAUTION' ? 'warn' : 'crit', text: `Mission advisor → ${r.advisor.decision}`,
+        plain: `Decision changed to ${r.advisor.decision}${r.advisor.decision === 'NO-GO' ? ': repair before the next flight' : ''}` });
       dec = r.advisor.decision;
     }
   });
@@ -85,6 +91,7 @@ function buildEvents(tl) {
 
 const TOAST_KINDS = new Set(['twin', 'crit', 'diag']);
 const TOAST_TITLE = { twin: 'Bayesian twin', crit: 'Alert', diag: 'Signature check' };
+const TOAST_TITLE_PLAIN = { twin: 'Early warning', crit: 'Warning', diag: 'Problem named' };
 
 const EV_ICON = {
   info: <Clock size={14} color="var(--text-3)" />,
@@ -103,12 +110,12 @@ function openReport({ title, cur, timeline, truth, events }) {
   if (!w) return;
   w.document.write(`<!doctype html><html><head><title>Maintenance report – ${title}</title>
   <style>body{font-family:Inter,Arial,sans-serif;max-width:820px;margin:40px auto;color:#0f172a;line-height:1.5}
-  h1{margin:0;font-size:24px}h2{font-size:15px;text-transform:uppercase;letter-spacing:.6px;color:#334155;border-bottom:2px solid #e2e8f0;padding-bottom:4px;margin-top:28px}
-  table{border-collapse:collapse;width:100%;font-size:13px}td{padding:6px 8px;border-bottom:1px solid #e2e8f0}td:first-child{color:#64748b;width:42%}
+  h1{margin:0;font-size:24px}h2{font-size:15px;text-transform:uppercase;letter-spacing:.6px;color:#3d3048;border-bottom:2px solid #eef2f6;padding-bottom:4px;margin-top:28px}
+  table{border-collapse:collapse;width:100%;font-size:13px}td{padding:6px 8px;border-bottom:1px solid #eef2f6}td:first-child{color:#9c93a8;width:42%}
   .dec{display:inline-block;padding:6px 14px;border-radius:6px;font-weight:800;color:#fff;background:${cur.advisor.decision === 'GO' ? '#16a34a' : cur.advisor.decision === 'CAUTION' ? '#d97706' : '#dc2626'}}
-  .foot{margin-top:30px;font-size:11px;color:#64748b}</style></head><body>
+  .foot{margin-top:30px;font-size:11px;color:#9c93a8}</style></head><body>
   <div style="display:flex;justify-content:space-between;align-items:center"><div><div style="color:#0284c7;font-weight:700;font-size:12px;letter-spacing:1px">AEROTWIN · ENGINE HEALTH MAINTENANCE REPORT</div><h1>${title}</h1>
-  <div style="color:#64748b;font-size:13px">Generated ${new Date().toLocaleString()} · Engine: Rotax 912 S/ULS class</div></div><div class="dec">${cur.advisor.decision}</div></div>
+  <div style="color:#9c93a8;font-size:13px">Generated ${new Date().toLocaleString()} · Engine: Rotax 912 S/ULS class</div></div><div class="dec">${cur.advisor.decision}</div></div>
   <h2>Engine health summary</h2><table>
   <tr><td>Flight time analysed</td><td>${clock(cur.t)} (${timeline.length} windows of 60 s, 10 s stride)</td></tr>
   <tr><td>Health Index (current / minimum)</td><td>${cur.hi_smooth.toFixed(1)} / ${minHi.toFixed(1)}</td></tr>
@@ -133,6 +140,7 @@ function openReport({ title, cur, timeline, truth, events }) {
 }
 
 export default function TwinViewer({ timeline, truth, title, subtitle, autoplay = true, startAtEnd = false }) {
+  const simple = useSimple();
   const n = timeline.length;
   const [idx, setIdx] = useState(startAtEnd ? n - 1 : 0);
   const [playing, setPlaying] = useState(autoplay && !startAtEnd);
@@ -227,7 +235,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
 
   const xAxis = <XAxis dataKey="t" type="number" domain={[0, maxT]} tickFormatter={clock} ticks={[0, 600, 1200, 1800, 2400, 3000, 3600].filter((x) => x <= maxT)} />;
   const truthLines = showTruth && truth?.fault_start_t != null ? [
-    <ReferenceArea key="ra" x1={truth.fault_start_t} x2={Math.min(truth.failure_t, maxT)} fill="rgba(255,197,61,.1)" />,
+    <ReferenceArea key="ra" x1={truth.fault_start_t} x2={Math.min(truth.failure_t, maxT)} fill="rgba(250, 204, 21, .08)" />,
     <ReferenceLine key="on" x={truth.fault_start_t} stroke="var(--warn)" strokeDasharray="4 3" label={{ value: 'fault onset (truth)', fill: 'var(--warn)', fontSize: 10, position: 'insideTopRight' }} />,
     truth.failure_t <= maxT && <ReferenceLine key="fl" x={truth.failure_t} stroke="var(--crit)" strokeDasharray="4 3" label={{ value: 'failure (truth)', fill: 'var(--crit)', fontSize: 10, position: 'insideTopLeft' }} />,
   ] : [];
@@ -238,7 +246,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
         {toasts.map((e) => (
           <div key={`${e.i}-${e.text}`} className={`toast ${e.kind}`}>
             {EV_ICON[e.kind]}
-            <div><b>{TOAST_TITLE[e.kind]}</b>{e.text.replace(/^(Bayesian twin|Diagnosis): /, '')}<br /><time>T+{clock(e.t)}</time></div>
+            <div><b>{(simple ? TOAST_TITLE_PLAIN : TOAST_TITLE)[e.kind]}</b>{simple ? e.plain : e.text.replace(/^(Bayesian twin|Diagnosis): /, '')}<br /><time>T+{clock(e.t)}</time></div>
           </div>
         ))}
       </div>
@@ -272,7 +280,7 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
         {truth?.fault_type && (
           <label className="toggle" title="Overlay the simulator's hidden ground truth (fault onset & failure time)">
             <input type="checkbox" checked={showTruth} onChange={(e) => setShowTruth(e.target.checked)} />
-            <Eye size={14} /> Ground truth
+            <Eye size={14} /> {simple ? 'Show the real answer' : 'Ground truth'}
           </label>
         )}
         <button className="btn" onClick={() => openReport({ title, cur, timeline, truth, events })}><FileText size={15} /> Report</button>
@@ -281,44 +289,45 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
       {/* top row */}
       <div className="twin-top mt">
         <div className="panel">
-          <div className="panel-title"><Cpu size={15} /> Engine twin <span className="right badge b-mute">{cur.phase || '—'}</span></div>
+          <div className="panel-title"><Cpu size={15} /> {simple ? 'Live engine picture' : 'Engine twin'} <span className="right badge b-mute">{cur.phase || '—'}</span></div>
           <EngineDiagram row={cur} flaggedCyl={flagCyl} flaggedSystem={flagFault} />
+          {simple && <div className="plain-note">The four boxes are the engine&apos;s cylinders. Colour shows heat: blue is cool, red is too hot. A part that blinks red is the suspected problem.</div>}
         </div>
 
         <div className="panel">
-          <div className="panel-title"><Activity size={15} /> Health & prognostics</div>
+          <div className="panel-title"><Activity size={15} /> {simple ? 'Engine health' : 'Health & prognostics'}</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
             <div className="hi-big" style={{ color: hiColor(cur.hi_smooth) }}>
               {cur.hi_smooth.toFixed(0)}
             </div>
-            <div className="muted" style={{ fontSize: 13 }}>Health Index<br /><span className="dim">0 = failed · 100 = as-new</span></div>
+            <div className="muted" style={{ fontSize: 13 }}>{simple ? 'Health score' : 'Health Index'}<br /><span className="dim">0 = failed · 100 = as-new</span></div>
           </div>
           <div className="hi-bar">
             <div style={{ transform: `scaleX(${cur.hi_smooth / 100})`, background: hiColor(cur.hi_smooth) }} />
           </div>
-          <div className="stat-row"><span>Remaining useful life</span>{twinRul
+          <div className="stat-row"><span>{simple ? <Term tip="How long the engine can keep running before the faulty part fails, estimated from how fast its health is dropping.">Time left before failure</Term> : 'Remaining useful life'}</span>{twinRul
             ? <b style={{ color: 'var(--warn)' }}>≈ {fmtDur(twinRul.p50)} <span className="dim" style={{ fontWeight: 400 }}>({fmtDur(twinRul.p5)}–{fmtDur(twinRul.p95)})</span></b>
             : cur.alert
             ? <b style={{ color: 'var(--crit)' }}>Threshold reached</b>
             : <b style={{ color: cur.rul_s != null ? 'var(--warn)' : 'var(--ok)' }}>{cur.rul_s != null ? `≈ ${fmtDur(cur.rul_s)}` : 'Stable'}</b>}</div>
-          <div className="stat-row"><span>Fused anomaly percentile</span><b>{cur.fused.toFixed(0)}<span className="dim">/100</span></b></div>
-          <div className="stat-row"><span>ML ensemble alert</span>{cur.alert ? <span className="badge b-crit">Alert</span> : cur.alert_latched ? <span className="badge b-crit">Latched</span> : cur.degrading ? <span className="badge b-warn">Degrading</span> : <span className="badge b-ok">Nominal</span>}</div>
-          <div className="stat-row"><span>Altitude · Throttle</span><b>{cur.altitude_ft.toFixed(0)} ft · {cur.throttle_pct.toFixed(0)}%</b></div>
+          {!simple && <div className="stat-row"><span>Fused anomaly percentile</span><b>{cur.fused.toFixed(0)}<span className="dim">/100</span></b></div>}
+          <div className="stat-row"><span>{simple ? 'AI warning' : 'ML ensemble alert'}</span>{cur.alert ? <span className="badge b-crit">Alert</span> : cur.alert_latched ? <span className="badge b-crit">Latched</span> : cur.degrading ? <span className="badge b-warn">Degrading</span> : <span className="badge b-ok">Nominal</span>}</div>
+          <div className="stat-row"><span>{simple ? 'Height · Engine power' : 'Altitude · Throttle'}</span><b>{cur.altitude_ft.toFixed(0)} ft · {cur.throttle_pct.toFixed(0)}%</b></div>
           <div className={`decision d-${cur.advisor.decision} mt`}>
-            <div className="decision-label">Next-mission advisor</div>
+            <div className="decision-label">{simple ? 'Safe for the next flight?' : 'Next-mission advisor'}</div>
             <h3>{cur.advisor.decision === 'GO' ? <ShieldCheck /> : cur.advisor.decision === 'CAUTION' ? <TriangleAlert /> : <CircleX />}{cur.advisor.decision}</h3>
-            <ul>{cur.advisor.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+            <ul>{cur.advisor.reasons.map((r) => <li key={r}>{simple ? plainReason(r) : r}</li>)}</ul>
           </div>
         </div>
 
         <div className="panel">
-          <div className="panel-title"><Brain size={15} /> Fault signature check</div>
+          <div className="panel-title"><Brain size={15} /> {simple ? "What's wrong?" : 'Fault signature check'}</div>
           {diag ? (
             <div className="diag-box">
-              <div className="diag-kicker">Most likely fault</div>
-              <div className="diag-name">{diag.label}{diag.cylinder ? ` · Cyl ${diag.cylinder}` : ''}</div>
-              <div style={{ fontSize: 12.5, marginTop: 6 }} className="muted">{diag.evidence}</div>
-              <div style={{ marginTop: 10 }}>
+              <div className="diag-kicker">{simple ? 'Most likely problem' : 'Most likely fault'}</div>
+              <div className="diag-name">{simple ? PLAIN_FAULT[diag.fault] || diag.label : diag.label}{diag.cylinder ? (simple ? `, cylinder ${diag.cylinder}` : ` · Cyl ${diag.cylinder}`) : ''}</div>
+              {!simple && <div style={{ fontSize: 12.5, marginTop: 6 }} className="muted">{diag.evidence}</div>}
+              {!simple && <div style={{ marginTop: 10 }}>
                 {Object.entries(diag.scores).sort((a, b) => b[1] - a[1]).map(([k, v]) => (
                   <div key={k} className="diag-bar">
                     <span>{FAULT_SHORT[k]}</span>
@@ -326,23 +335,28 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
                     <b className="mono" style={{ fontSize: 11 }}>{v.toFixed(1)}σ</b>
                   </div>
                 ))}
-              </div>
+              </div>}
               <div style={{ marginTop: 12, display: 'flex', gap: 8, fontSize: 12.5 }}>
                 <Wrench size={16} color="var(--warn)" style={{ flexShrink: 0, marginTop: 2 }} />
-                <span><b>Action:</b> {diag.action}</span>
+                <span><b>{simple ? 'What to fix:' : 'Action:'}</b> {diag.action}</span>
               </div>
             </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '24px 8px' }}>
               <CircleCheck size={42} color="var(--ok)" />
-              <div style={{ fontWeight: 700, marginTop: 10 }}>{twinDetected ? 'Awaiting ML confirmation' : 'No fault signature'}</div>
+              <div style={{ fontWeight: 700, marginTop: 10 }}>{simple ? (twinDetected ? 'A problem is building up' : 'Nothing wrong found yet') : twinDetected ? 'Awaiting ML confirmation' : 'No fault signature'}</div>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 6, lineHeight: 1.5 }}>
-                {twinDetected
+                {simple
+                  ? (twinDetected
+                    ? 'One checker has already spotted a part wearing out. The second checker confirms it once the health score drops.'
+                    : 'The system compares every sensor with what a healthy engine should read. Nothing is out of line so far.')
+                  : twinDetected
                   ? 'The Bayesian twin (below) has already isolated the fault. This rule-based signature check engages once the ML Health Index degrades, as an independent second opinion.'
                   : '15 residual channels (measured − healthy twin) are monitored. The signature check engages once the Health Index shows sustained degradation.'}
               </div>
             </div>
           )}
+          {!simple && <>
           <div className="panel-title mt" style={{ marginBottom: 6 }}><Layers size={15} /> Residuals now (σ from healthy)</div>
           <div style={{ height: 170 }}>
             <ResponsiveContainer>
@@ -358,28 +372,29 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
               </BarChart>
             </ResponsiveContainer>
           </div>
+          </>}
         </div>
       </div>
 
-      <BayesianTwin timeline={timeline} idx={idx} truth={truth} showTruth={showTruth} maxT={maxT} />
+      {!simple && <BayesianTwin timeline={timeline} idx={idx} truth={truth} showTruth={showTruth} maxT={maxT} />}
 
       {/* gauges */}
       <div className="grid g6 mt">
         <Gauge label="Engine speed" icon={GaugeIcon} value={cur.rpm} unit="rpm" min={0} max={6000} bands={[{ to: 1400, color: 'var(--warn)' }, { to: 5500, color: 'var(--ok)' }, { to: 5800, color: 'var(--warn)' }, { to: 6000, color: 'var(--crit)' }]} />
         <Gauge label="Oil pressure" icon={Droplet} value={cur.oil_press_bar} expected={cur.exp.oil_press_bar} unit="bar" min={0} max={8} decimals={2} bands={[{ to: 0.8, color: 'var(--crit)' }, { to: 2, color: 'var(--warn)' }, { to: 5, color: 'var(--ok)' }, { to: 7, color: 'var(--warn)' }, { to: 8, color: 'var(--crit)' }]} />
         <Gauge label="Oil temp" icon={Thermometer} value={cur.oil_temp_c} expected={cur.exp.oil_temp_c} unit="°C" min={20} max={150} bands={[{ to: 50, color: 'var(--warn)' }, { to: 110, color: 'var(--ok)' }, { to: 130, color: 'var(--warn)' }, { to: 150, color: 'var(--crit)' }]} />
-        <Gauge label="CHT (max)" icon={Thermometer} value={Math.max(cur.cht_1, cur.cht_2, cur.cht_3, cur.cht_4)} expected={cur.exp.cht} unit="°C" min={20} max={160} bands={[{ to: 120, color: 'var(--ok)' }, { to: 135, color: 'var(--warn)' }, { to: 160, color: 'var(--crit)' }]} />
+        <Gauge label={simple ? 'Hottest cylinder' : 'CHT (max)'} icon={Thermometer} value={Math.max(cur.cht_1, cur.cht_2, cur.cht_3, cur.cht_4)} expected={cur.exp.cht} unit="°C" min={20} max={160} bands={[{ to: 120, color: 'var(--ok)' }, { to: 135, color: 'var(--warn)' }, { to: 160, color: 'var(--crit)' }]} />
         <Gauge label="Vibration" icon={Waves} value={cur.vib_rms_g} expected={cur.exp.vib_rms_g} unit="g RMS" min={0} max={8} decimals={2} bands={[{ to: 4, color: 'var(--ok)' }, { to: 6, color: 'var(--warn)' }, { to: 8, color: 'var(--crit)' }]} />
         <Gauge label="Fuel flow" icon={Fuel} value={cur.fuel_flow_lph} expected={cur.exp.fuel_flow_lph} unit="L/h" min={0} max={30} decimals={1} bands={[{ to: 30, color: 'var(--accent)' }]} />
       </div>
 
-      <XaiPanel row={cur} explained={xaiRow} />
+      {!simple && <XaiPanel row={cur} explained={xaiRow} />}
 
       {/* charts */}
-      <div className="grid g2 mt">
-        <div className="panel">
-          <div className="panel-title"><Activity size={15} /> Health Index timeline
-            <span className="right dim" style={{ fontSize: 11 }}>— smoothed · ┄ raw · thresholds 80 / 50</span></div>
+      <div className={`grid mt ${simple ? '' : 'g2'}`}>
+        <div className="panel glass-stage">
+          <div className="panel-title"><Activity size={15} /> {simple ? 'Health score during the flight' : 'Health Index timeline'}
+            <span className="right dim" style={{ fontSize: 11 }}>{simple ? 'below 80: getting worse · below 50: warning' : '— smoothed · ┄ raw · thresholds 80 / 50'}</span></div>
           <div style={{ height: 250 }}>
             <ResponsiveContainer>
               <ComposedChart data={hist} margin={{ top: 8, right: 8, left: -20, bottom: 0 }}>
@@ -392,20 +407,20 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
                 <CartesianGrid strokeDasharray="3 3" />
                 {xAxis}
                 <YAxis domain={[0, 100]} />
-                <ReferenceArea y1={0} y2={50} fill="rgba(255,84,104,.1)" />
-                <ReferenceLine y={80} stroke="var(--warn)" strokeDasharray="4 3" />
-                <ReferenceLine y={50} stroke="var(--crit)" strokeDasharray="4 3" />
+                <ReferenceArea y1={0} y2={50} fill="rgba(251,100,123,.06)" />
+                <ReferenceLine y={80} stroke="var(--warn)" strokeDasharray="4 4" label={{ value: 'limit 80', fill: 'var(--text-3)', fontSize: 10, position: 'insideTopLeft' }} />
+                <ReferenceLine y={50} stroke="var(--crit)" strokeDasharray="4 4" label={{ value: 'alert 50', fill: 'var(--text-3)', fontSize: 10, position: 'insideBottomLeft' }} />
                 {truthLines}
                 {alertVisible && <ReferenceLine x={firstAlert.t} stroke="var(--accent)" label={{ value: 'first alert', fill: 'var(--accent)', fontSize: 10, position: 'insideBottomLeft' }} />}
                 <Tooltip content={<ChartTip />} />
-                <Line dataKey="hi" name="HI raw" stroke="rgba(216,208,242,.5)" dot={false} strokeWidth={1} isAnimationActive={false} />
+                <Line dataKey="hi" name="HI raw" stroke="rgba(214, 224, 234, .45)" dot={false} strokeWidth={1} isAnimationActive={false} />
                 <Area dataKey="hi_smooth" name="HI" stroke="var(--accent)" fill="url(#hig)" strokeWidth={2.5} dot={false} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="panel">
+        {!simple && <div className="panel glass-stage">
           <div className="panel-title"><Brain size={15} /> Detector ensemble
             <span className="right dim" style={{ fontSize: 11 }}>percentile vs healthy flights · 60 s mean</span></div>
           <div style={{ height: 250 }}>
@@ -423,16 +438,20 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
               </LineChart>
             </ResponsiveContainer>
           </div>
-        </div>
+          <div className="method-legend">
+            {[['IF', 'Isolation Forest'], ['PCA', 'PCA-SPE'], ['LSTM', 'LSTM-AE']].map(([k, l]) => <span key={k}><i style={{ background: MODEL_COLORS[k] }} />{l}</span>)}
+            <span><i style={{ background: '#fff' }} />Fused</span>
+          </div>
+        </div>}
       </div>
 
       <div className="grid g-wide mt">
-        <div className="panel">
-          <div className="panel-title"><Mountain size={15} /> Measured vs digital twin
+        <div className="panel glass-stage">
+          <div className="panel-title"><Mountain size={15} /> {simple ? 'Real reading vs a healthy engine' : 'Measured vs digital twin'}
             <span className="right">
               <span className="seg">
                 {Object.entries(SIGNALS).map(([k, s]) => (
-                  <button key={k} className={signal === k ? 'on' : ''} onClick={() => setSignal(k)}>{s.label.split(' (')[0]}</button>
+                  <button key={k} className={signal === k ? 'on' : ''} onClick={() => setSignal(k)}>{simple ? s.plain : s.label.split(' (')[0]}</button>
                 ))}
               </span>
             </span>
@@ -455,19 +474,21 @@ export default function TwinViewer({ timeline, truth, title, subtitle, autoplay 
             </ResponsiveContainer>
           </div>
           <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>
-            Dashed white = what a perfectly healthy engine would read under the same RPM, throttle, altitude and ambient temperature (physics model with thermal lag). The gap is the residual the AI models analyse.
+            {simple
+              ? 'Coloured lines = what the sensors really read. Dashed white line = what a healthy engine should read at this moment. When they drift apart, something is wrong.'
+              : 'Dashed white = what a perfectly healthy engine would read under the same RPM, throttle, altitude and ambient temperature (physics model with thermal lag). The gap is the residual the AI models analyse.'}
           </div>
         </div>
 
         <div className="panel">
-          <div className="panel-title"><CircleAlert size={15} /> Event log <span className="right dim">{evNow.length} events</span></div>
+          <div className="panel-title"><CircleAlert size={15} /> {simple ? 'What happened' : 'Event log'} <span className="right dim">{evNow.length} events</span></div>
           <div className="log">
             {evNow.length === 0 && <div className="dim">Waiting for events…</div>}
             {evNow.map((e) => (
               <div key={`${e.i}-${e.text}`} className="log-item">
                 <time>T+{clock(e.t)}</time>
                 {EV_ICON[e.kind]}
-                <span className={e.kind === 'crit' ? 'log-crit' : undefined}>{e.text}</span>
+                <span className={e.kind === 'crit' ? 'log-crit' : undefined}>{simple ? e.plain : e.text}</span>
               </div>
             ))}
           </div>

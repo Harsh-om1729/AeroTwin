@@ -20,7 +20,7 @@ export default function BootScreen() {
   }, []);
   return (
     <div className="boot">
-      <div className="boot-card">
+      <div className="boot-card glass-stage">
         <div className="boot-logo"><Logo /></div>
         <div className="boot-title">AeroTwin</div>
         <div className="boot-sub">Aero-piston engine digital twin · initialising</div>

@@ -49,8 +49,8 @@ function Cylinder({ n, cht, egt, flagged }) {
         <line key={fx} x1={fx} y1={y + 5} x2={fx} y2={y + 57} stroke="rgba(0,0,0,.25)" strokeWidth="2" />
       ))}
       <circle cx={exX} cy={y + 31} r="7" fill={ramp(EGT_STOPS, egt)} style={{ filter: `drop-shadow(0 0 6px ${ramp(EGT_STOPS, egt)})` }} />
-      <rect x={x + 8} y={y + 8} width="74" height="46" rx="6" fill="rgba(14,6,40,.68)" />
-      <text x={x + 45} y={y + 22} textAnchor="middle" fontSize="10" fill="#cbd5e1" fontWeight="700">CYL {n}</text>
+      <rect x={x + 8} y={y + 8} width="74" height="46" rx="6" fill="rgba(18, 8, 26, .7)" />
+      <text x={x + 45} y={y + 22} textAnchor="middle" fontSize="10" fill="#e6ecf2" fontWeight="700">CYL {n}</text>
       <text x={x + 45} y={y + 36} textAnchor="middle" fontSize="10.5" fill="#fff" fontFamily="var(--mono)">CHT {cht != null ? cht.toFixed(0) : '—'}°</text>
       <text x={x + 45} y={y + 49} textAnchor="middle" fontSize="10.5" fill="#fde68a" fontFamily="var(--mono)">EGT {egt != null ? egt.toFixed(0) : '—'}°</text>
     </g>
@@ -69,35 +69,35 @@ export default function EngineDiagram({ row, flaggedCyl, flaggedSystem }) {
     <svg viewBox="0 0 400 330" className="engine-svg">
       <defs>
         <linearGradient id="case" x1="0" x2="1">
-          <stop offset="0" stopColor="#3a2a6e" />
-          <stop offset=".5" stopColor="#7a68b8" />
-          <stop offset="1" stopColor="#3a2a6e" />
+          <stop offset="0" stopColor="#3d3048" />
+          <stop offset=".5" stopColor="#9c93a8" />
+          <stop offset="1" stopColor="#3d3048" />
         </linearGradient>
         <radialGradient id="hub">
-          <stop offset="0" stopColor="#e2e8f0" />
-          <stop offset="1" stopColor="#7a68b8" />
+          <stop offset="0" stopColor="#eef2f6" />
+          <stop offset="1" stopColor="#9c93a8" />
         </radialGradient>
       </defs>
 
       {/* propeller, seen edge-on from above: blades sweep through the plane */}
-      {propDur > 0 && <rect x="78" y="49" width="244" height="6" rx="3" fill="rgba(148,163,184,.12)" />}
+      {propDur > 0 && <rect x="78" y="49" width="244" height="6" rx="3" fill="rgba(214, 224, 234, .12)" />}
       <g className={propDur ? 'prop' : ''} style={{ animationDuration: `${propDur}s` }}>
         <ellipse cx="200" cy="52" rx="120" ry="5" fill="rgba(203,213,225,.75)" />
       </g>
       <circle cx="200" cy="52" r="13" fill="url(#hub)" />
-      <rect x="194" y="64" width="12" height="28" fill="#4d3c8a" />
+      <rect x="194" y="64" width="12" height="28" fill="#4f425b" />
 
       <g className={shakePx > 0.3 ? 'shake' : ''} style={{ '--sx': `${shakePx}px` }}>
         {/* crankcase */}
         <rect x="160" y="92" width="80" height="176" rx="14" fill="url(#case)" stroke={flaggedSystem === 'abnormal_vibration' ? 'var(--crit)' : 'rgba(255,255,255,.24)'} strokeWidth={flaggedSystem === 'abnormal_vibration' ? 3 : 1} className={flaggedSystem === 'abnormal_vibration' ? 'cyl-alert' : ''} />
-        <text x="200" y="168" textAnchor="middle" fontSize="10" fill="#e2e8f0" fontWeight="700">CRANK</text>
-        <text x="200" y="182" textAnchor="middle" fontSize="10" fill="#e2e8f0" fontFamily="var(--mono)">{rpm.toFixed(0)} rpm</text>
-        <text x="200" y="200" textAnchor="middle" fontSize="9.5" fill="#cbd5e1" fontFamily="var(--mono)">{row?.vib_rms_g != null ? `${row.vib_rms_g.toFixed(2)} g` : ''}</text>
+        <text x="200" y="168" textAnchor="middle" fontSize="10" fill="#eef2f6" fontWeight="700">CRANK</text>
+        <text x="200" y="182" textAnchor="middle" fontSize="10" fill="#eef2f6" fontFamily="var(--mono)">{rpm.toFixed(0)} rpm</text>
+        <text x="200" y="200" textAnchor="middle" fontSize="9.5" fill="#e6ecf2" fontFamily="var(--mono)">{row?.vib_rms_g != null ? `${row.vib_rms_g.toFixed(2)} g` : ''}</text>
 
         {/* connecting rods */}
         {[1, 2, 3, 4].map((n) => {
           const { x, y, side } = CYL[n];
-          return <rect key={n} x={side === 'R' ? 240 : x + 90} y={y + 24} width={side === 'R' ? 10 : 10} height="14" fill="#4d3c8a" />;
+          return <rect key={n} x={side === 'R' ? 240 : x + 90} y={y + 24} width={side === 'R' ? 10 : 10} height="14" fill="#4f425b" />;
         })}
         {[1, 2, 3, 4].map((n) => (
           <Cylinder key={n} n={n} cht={row?.[`cht_${n}`]} egt={row?.[`egt_${n}`]} flagged={flaggedCyl === n || coolingBad} />

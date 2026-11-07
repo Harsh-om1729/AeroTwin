@@ -10,6 +10,9 @@ import TwinValidation from '../components/TwinValidation';
 import XaiValidation from '../components/XaiValidation';
 import RobustnessStudy from '../components/RobustnessStudy';
 import RealFlights from '../components/RealFlights';
+import SimpleResults from '../components/SimpleResults';
+import { useSimple } from '../ui/viewContext';
+import { heatScale, onHeat } from '../ui/chartTheme';
 import { FAULT_COLORS, FAULT_SHORT, clock, fmtDur, pct } from '../util';
 
 function Kpi({ icon: Icon, label, value, note, color = 'var(--accent)' }) {
@@ -29,6 +32,7 @@ const Tip = ({ active, payload, fmt }) => {
 };
 
 export default function Validation({ results, error }) {
+  const simple = useSimple();
   const [sel, setSel] = useState(null);
   const [loaded, setLoaded] = useState({ id: null, data: null, error: null });
   const mission = sel && loaded.id === sel.id ? loaded.data : null;
@@ -71,6 +75,8 @@ export default function Validation({ results, error }) {
 
   if (!r && error) return <div className="panel" style={{ color: 'var(--crit)' }}>Could not load the validation report: {error}</div>;
   if (!r) return <div className="loading"><div><LoaderCircle className="spin" /><div>Loading validation results…</div></div></div>;
+
+  if (simple) return <SimpleResults r={r} leadByType={leadByType} />;
 
   const fused = r.ablation.find((a) => a.model === 'Fused ensemble');
   const singles = r.ablation.filter((a) => a !== fused);
@@ -167,9 +173,9 @@ export default function Validation({ results, error }) {
                   const v = row[l];
                   const diag = truth === l;
                   return (
-                    <div key={l} className="cm-cell" style={{
-                      background: v ? (diag ? `rgba(20,170,120,${0.2 + 0.6 * v / cmMax})` : `rgba(255,60,90,${0.2 + 0.6 * v / cmMax})`) : 'var(--bg-2)',
-                      color: v ? '#fff' : 'var(--text-3)',
+                    <div key={l} className={`cm-cell ${v && !diag ? 'miss' : ''}`} title={v && !diag ? 'Misdiagnosis' : undefined} style={{
+                      background: v ? heatScale(0.25 + 0.75 * v / cmMax) : 'var(--bg-2)',
+                      color: v ? onHeat(0.25 + 0.75 * v / cmMax) : 'var(--text-3)',
                     }}>{v}</div>
                   );
                 })}

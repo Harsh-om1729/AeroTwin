@@ -1,18 +1,12 @@
-// Fixed colour field behind the glass: four temper-coloured blobs on slow,
-// transform-only drift, plus one layer per advisor decision. TwinViewer sets
-// <html data-sky="GO|CAUTION|NO-GO"> and the matching layer fades in, so the
-// glass itself changes colour with the engine's state.
+// Fixed ambient canvas (plan §3): dark base, low-opacity light sources and a
+// faint masked grid. On Twin Replay a faint light in the advisor's state colour
+// fades in (TwinViewer sets <html data-sky>).
 export default function Background() {
   return (
-    <div className="bg-fx" aria-hidden="true">
-      <div className="bg-blob b1" />
-      <div className="bg-blob b2" />
-      <div className="bg-blob b3" />
-      <div className="bg-blob b4" />
-      <div className="bg-sky sky-go" />
-      <div className="bg-sky sky-caution" />
-      <div className="bg-sky sky-nogo" />
-      <div className="bg-grain" />
+    <div className="app-ambient" aria-hidden="true">
+      <div className="ambient-state ambient-go" />
+      <div className="ambient-state ambient-caution" />
+      <div className="ambient-state ambient-nogo" />
     </div>
   );
 }

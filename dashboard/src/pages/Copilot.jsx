@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Bot, Cloud, Database, Send, Trash2, User, WifiOff } from 'lucide-react';
 import { api } from '../api';
+import { useSimple } from '../ui/viewContext';
 import Markdown from '../components/Markdown';
 
 const TOOL_LABEL = {
@@ -32,6 +33,7 @@ function loadChat() {
 }
 
 export default function Copilot({ fleet, selected }) {
+  const simple = useSimple();
   const [status, setStatus] = useState(null);
   const [aircraft, setAircraft] = useState(() => (fleet.some((f) => f.id === selected) ? selected : ''));
   const [offline, setOffline] = useState(false);
@@ -68,12 +70,19 @@ export default function Copilot({ fleet, selected }) {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">AI Maintenance Copilot</h1>
+          <h1 className="page-title">{simple ? 'Ask the AI' : 'AI Maintenance Copilot'}</h1>
+          {simple ? (
+            <div className="page-sub">
+              Ask a question in everyday words, like &ldquo;Which drone should we fix first?&rdquo;. The AI answers using only this
+              system&apos;s own results. It explains the GO / NO-GO decisions but never makes or changes them.
+            </div>
+          ) : (
           <div className="page-sub">
             Ask about the fleet in plain language. Every answer is grounded in the digital twin&apos;s own evidence (Go/No-Go
             reasons, Bayesian health and RUL, signature check, explainable-AI attributions, engine limits). The copilot explains
             decisions; it never makes or overrides them.
           </div>
+          )}
         </div>
         <div className="copilot-mode">
           {online ? (

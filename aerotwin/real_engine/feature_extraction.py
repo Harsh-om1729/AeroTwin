@@ -155,3 +155,77 @@ def prepare(root, out_path):
 
 
 __all__ = ["find_root", "infer_repair_groups", "load_header", "to_si", "resample_flight", "prepare", "SENSORS", "COVARIATES", "BLOCK_S"]
+
+
+# ---------------------------------------------------------------- full archive
+# The benchmark above uses 11,269 of the 28,935 flights in all_flights. The rest
+# lie further from the repair (up to 108 days before, 70 after) or on the repair
+# day itself ("same"). Each gets the fold of its inferred repair group, so fold
+# isolation still holds; groups with no benchmark flight get FIT_ONLY and are
+# used only to fit the healthy baseline, never to evaluate.
+FIT_ONLY = -1
+
+
+def load_header_all(root):
+    """One row per flight of the whole archive: flight, before_after (before /
+    after / same), date_diff (days to the repair, negative = before), fold,
+    event_group, issue, label, in_benchmark. Groups spanning folds are dropped."""
+    root = Path(root)
+    a = pd.read_csv(root / "all_flights" / "all_flights" / "flight_header.csv").sort_values("Master Index")
+    b = pd.read_csv(root / "2days" / "2days" / "flight_header.csv")
+    groups = infer_repair_groups(a)
+    a["event_group"] = groups.loc[a["Master Index"]].to_numpy()
+    b["event_group"] = groups.loc[b["Master Index"]].to_numpy()
+    folds = b.groupby("event_group")["fold"].agg(lambda s: s.iloc[0] if s.nunique() == 1 else None)
+    folds = folds.dropna()
+    spanning = set(b["event_group"].unique()) - set(folds.index)
+    a = a[~a["event_group"].isin(spanning)]
+    return pd.DataFrame({
+        "flight": a["Master Index"].to_numpy(),
+        "before_after": a["before_after"].to_numpy(),
+        "date_diff": a["date_diff"].to_numpy(),
+        "fold": a["event_group"].map(folds).fillna(FIT_ONLY).astype(int).to_numpy(),
+        "event_group": a["event_group"].to_numpy(),
+        "issue": a["hierarchy"].fillna(ISSUE_OTHER).to_numpy(),
+        "label": a["label"].to_numpy(),
+        "in_benchmark": a["Master Index"].isin(b["Master Index"]).to_numpy(),
+    }).reset_index(drop=True)
+
+
+def _blocks_of_part(args):
+    path, wanted = args
+    raw = pq.read_table(path, columns=SOURCE_COLS).to_pandas()
+    raw = raw.reset_index(drop=raw.index.name != "Master Index") if "Master Index" not in raw else raw
+    raw = raw[raw["Master Index"].isin(wanted)]
+    out, seen = [], 0
+    for _, g in to_si(raw).groupby("flight", sort=False):
+        seen += 1
+        b = resample_flight(g)
+        if b is not None:
+            out.append(b)
+    return (pd.concat(out, ignore_index=True) if out else None), seen, len(out)
+
+
+def prepare_all(root, out_path, workers=None):
+    """Same reduction as prepare(), over every flight of the archive, one parquet
+    part per worker process. Returns (blocks, stats)."""
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+    header = load_header_all(root)
+    wanted = frozenset(header["flight"].tolist())
+    paths = sorted((Path(root) / "all_flights" / "all_flights" / "one_parq").glob("*.parquet"))
+    parts, seen, usable = [], 0, 0
+    with ProcessPoolExecutor(workers or max(1, (os.cpu_count() or 2) - 2)) as ex:
+        for i, (b, s, u) in enumerate(ex.map(_blocks_of_part, [(p, wanted) for p in paths])):
+            seen, usable = seen + s, usable + u
+            if b is not None:
+                parts.append(b)
+            if i % 40 == 0:
+                print(f"  part {i + 1}/{len(paths)}  flights read {seen:,}  usable {usable:,}", flush=True)
+    blocks = pd.concat(parts, ignore_index=True)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    blocks.to_parquet(out_path)
+    return blocks, {"flights_in_archive": len(wanted), "flights_read": seen, "flights_usable": usable}
+
+
+__all__ += ["load_header_all", "prepare_all", "FIT_ONLY"]

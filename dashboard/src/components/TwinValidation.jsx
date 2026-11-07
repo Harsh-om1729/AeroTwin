@@ -57,7 +57,7 @@ export default function TwinValidation({ twin }) {
                 <Tooltip cursor={{ fill: 'rgba(255,255,255,.03)' }} content={<Tip fmt={(p) => <>{p.fault}<br />twin <b>{fmtDur(p.twin)}</b> · ML <b>{fmtDur(p.ml)}</b></>} />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar isAnimationActive={false} dataKey="twin" name="Bayesian twin" fill="var(--accent-2)" radius={[4, 4, 0, 0]} />
-                <Bar isAnimationActive={false} dataKey="ml" name="ML ensemble" fill="#8d82b8" radius={[4, 4, 0, 0]} />
+                <Bar isAnimationActive={false} dataKey="ml" name="ML ensemble" fill="#9c93a8" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

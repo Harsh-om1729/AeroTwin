@@ -2,6 +2,7 @@
 // the sensor the injected fault physically acts on? Plus the global view.
 import { ScanSearch } from 'lucide-react';
 import { FAULT_SHORT, MODEL_COLORS, SENSOR_LABEL, pct } from '../util';
+import { heatScale, onHeat } from '../ui/chartTheme';
 
 const WHO = [
   ['ensemble', 'Ensemble', 'var(--accent)'],
@@ -52,7 +53,7 @@ export default function XaiValidation({ xai }) {
                 <div className="heat-row">{FAULT_SHORT[ft]}</div>
                 {row.map((v, i) => (
                   <div key={ch[i]} className="heat-cell" title={`${FAULT_SHORT[ft]} · ${SENSOR_LABEL[ch[i]]}: ${v.toFixed(1)}%`}
-                    style={{ background: `rgba(255,45,135,${Math.min(0.9, v / 100)})`, color: v > 35 ? '#fff' : 'var(--text-2)' }}>
+                    style={{ background: heatScale(Math.min(1, v / 100)), color: onHeat(Math.min(1, v / 100)) }}>
                     {v >= 5 ? v.toFixed(0) : ''}
                   </div>
                 ))}

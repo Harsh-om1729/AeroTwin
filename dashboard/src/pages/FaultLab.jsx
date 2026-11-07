@@ -3,24 +3,26 @@ import { Atom, CircleCheck, CircleX, Droplet, FlaskConical, LoaderCircle, Shield
 import { api } from '../api';
 import TwinViewer from '../components/TwinViewer';
 import { FAULT_SHORT, HYP_LABEL, clock, fmtDur } from '../util';
+import { useSimple } from '../ui/viewContext';
 
 const FAULTS = [
-  { id: '', icon: ShieldCheck, name: 'Healthy engine', desc: 'No fault. Tests that the twin does not raise false alarms.' },
-  { id: 'lubrication', icon: Droplet, name: 'Lubrication loss', desc: 'Oil pump / oil starvation: oil pressure decays.' },
-  { id: 'cooling_degradation', icon: Thermometer, name: 'Cooling loss', desc: 'Blocked radiator / baffles: CHT and oil temp climb.' },
-  { id: 'injector_abnormality', icon: Fuel, name: 'Lean cylinder', desc: 'Intake leak / fuel metering: one cylinder runs lean (EGT↑).' },
-  { id: 'misfire', icon: Zap, name: 'Ignition misfire', desc: 'Fouled plug: one cylinder EGT drops, vibration rises.' },
-  { id: 'abnormal_vibration', icon: Waves, name: 'Bearing wear', desc: 'Mechanical wear: vibration grows, temperatures normal.' },
+  { id: '', icon: ShieldCheck, name: 'Healthy engine', desc: 'No fault. Tests that the twin does not raise false alarms.', plain: 'Nothing wrong. Checks that the system does not raise a false alarm.' },
+  { id: 'lubrication', icon: Droplet, name: 'Lubrication loss', desc: 'Oil pump / oil starvation: oil pressure decays.', plain: 'The oil pump weakens, so oil pressure slowly drops.' },
+  { id: 'cooling_degradation', icon: Thermometer, name: 'Cooling loss', desc: 'Blocked radiator / baffles: CHT and oil temp climb.', plain: 'Cooling gets blocked, so the engine slowly overheats.' },
+  { id: 'injector_abnormality', icon: Fuel, name: 'Lean cylinder', desc: 'Intake leak / fuel metering: one cylinder runs lean (EGT↑).', plain: 'One cylinder gets too little fuel and runs hot.' },
+  { id: 'misfire', icon: Zap, name: 'Ignition misfire', desc: 'Fouled plug: one cylinder EGT drops, vibration rises.', plain: 'A dirty spark plug: one cylinder stops firing and the engine shakes.' },
+  { id: 'abnormal_vibration', icon: Waves, name: 'Bearing wear', desc: 'Mechanical wear: vibration grows, temperatures normal.', plain: 'Worn moving parts: the engine shakes more and more.' },
 ];
 
 const PROFILES = {
-  standard: 'Standard (ISA, 5,000 ft)',
+  standard: 'Normal day (5,000 ft)',
   hot_weather: 'Hot day (+35 °C)',
-  high_altitude: 'High altitude (15,000 ft) – unseen in training',
-  rapid_throttle: 'Rapid throttle changes – unseen in training',
+  high_altitude: 'Very high (15,000 ft), never seen in training',
+  rapid_throttle: 'Lots of power changes, never seen in training',
 };
 
 export default function FaultLab() {
+  const simple = useSimple();
   const [fault, setFault] = useState('misfire');
   const [severity, setSeverity] = useState('moderate');
   const [onset, setOnset] = useState(1200);
@@ -36,7 +38,8 @@ export default function FaultLab() {
     setBusy(true);
     setError(null);
     try {
-      const r = await api.simulate({ fault_type: fault || null, severity, onset_s: onset, profile, gap, calibrate });
+      // Simple view hides the reality-gap controls, so it always runs with the engine matching the twin.
+      const r = await api.simulate({ fault_type: fault || null, severity, onset_s: onset, profile, gap: simple ? 0 : gap, calibrate: simple ? false : calibrate });
       setRun(r);
       setRunNo((n) => n + 1);
     } catch (e) {
@@ -74,6 +77,27 @@ export default function FaultLab() {
     }
   }
 
+  // Simple view: the same verdict in everyday words.
+  if (run && simple) {
+    const min = (x) => `${Math.max(1, Math.round(x / 60))} min`;
+    if (!t.fault_type) {
+      verdict = { ...verdict, title: verdict.ok ? 'Correct: no false alarm' : 'False alarm', text: verdict.ok
+        ? 'The engine was healthy and the system stayed quiet the whole flight.'
+        : `The engine was healthy, but the system raised a warning ${min(res.first_alert_t)} into the flight.` };
+    } else if (res.first_alert_t != null && res.first_alert_t < t.fault_start_t) {
+      verdict = { ...verdict, title: 'Warned too early', text: `The warning came ${min(res.first_alert_t)} into the flight, before the problem had even started.` };
+    } else if (res.first_alert_t == null) {
+      verdict = { ...verdict, title: 'Missed', text: 'The system did not warn before the flight ended. Try a later start or a worse problem.' };
+    } else {
+      const diagOk = res.diagnosed_as === t.fault_type;
+      const before = res.first_alert_t < t.failure_t;
+      verdict = { ...verdict,
+        title: `${before ? 'Caught in time' : 'Caught, but too late'} · ${diagOk ? 'right problem named' : `named the wrong problem (${FAULT_SHORT[res.diagnosed_as] || 'none'})`}`,
+        text: `The problem started ${min(t.fault_start_t)} into the flight. The system warned ${fmtDur(res.detection_delay_s)} later`
+          + (before ? `, about ${fmtDur(res.lead_time_s)} before the engine would have failed.` : '.') };
+    }
+  }
+
   let twinLine = null;
   let cusumLine = null;
   if (run) {
@@ -103,29 +127,37 @@ export default function FaultLab() {
     <>
       <div className="page-head">
         <div>
-          <h1 className="page-title">Fault Injection Lab</h1>
-          <div className="page-sub">
-            Generate a brand-new flight with the physics engine model, inject a fault you choose, and watch the digital twin
-            find it. Nothing here is pre-recorded: every run is a fresh mission the AI models have never seen.
-          </div>
+          <h1 className="page-title">{simple ? 'Try a fault' : 'Fault Injection Lab'}</h1>
+          {simple ? (
+            <div className="page-sub">
+              Be the tester. Pick an engine problem, choose how bad it is and when it starts, then press <b>Run</b>. The computer
+              flies a brand-new one-hour flight and you see if the system catches the problem before the engine fails.
+            </div>
+          ) : (
+            <div className="page-sub">
+              Generate a brand-new flight with the physics engine model, inject a fault you choose, and watch the digital twin
+              find it. Nothing here is pre-recorded: every run is a fresh mission the AI models have never seen.
+            </div>
+          )}
         </div>
       </div>
 
       <div className="panel">
-        <div className="field-label">1 · Choose a fault to inject</div>
-        <div className="grid g6 stagger">
+        <div className="field-label">{simple ? '1 · Pick a problem' : '1 · Choose a fault to inject'}</div>
+        <div className="grid g6 stagger" role="radiogroup" aria-label="Fault to inject">
           {FAULTS.map((f) => (
-            <div key={f.id || 'none'} className={`fault-opt ${fault === f.id ? 'on' : ''}`} onClick={() => setFault(f.id)}>
+            <div key={f.id || 'none'} className={`fault-opt ${fault === f.id ? 'on' : ''}`} role="radio" aria-checked={fault === f.id} tabIndex={0}
+              onClick={() => setFault(f.id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setFault(f.id); } }}>
               <f.icon size={20} color={fault === f.id ? 'var(--accent)' : 'var(--text-2)'} />
               <h4>{f.name}</h4>
-              <p>{f.desc}</p>
+              <p>{simple ? f.plain : f.desc}</p>
             </div>
           ))}
         </div>
 
         <div className="grid g3 mt" style={{ alignItems: 'end' }}>
           <div>
-            <div className="field-label">2 · Severity (degradation rate)</div>
+            <div className="field-label">{simple ? '2 · How bad?' : '2 · Severity (degradation rate)'}</div>
             <div className="seg">
               {['mild', 'moderate', 'severe'].map((s) => (
                 <button key={s} disabled={!fault} className={severity === s ? 'on' : ''} onClick={() => setSeverity(s)}>{s}</button>
@@ -133,17 +165,17 @@ export default function FaultLab() {
             </div>
           </div>
           <div>
-            <div className="field-label">3 · Fault onset: T+{clock(onset)}</div>
+            <div className="field-label">{simple ? <>3 · Starts {Math.round(onset / 60)} min into the flight</> : <>3 · Fault onset: T+{clock(onset)}</>}</div>
             <input type="range" aria-label="Fault onset" style={{ '--p': `${((onset - 300) / 2400) * 100}%` }} min={300} max={2700} step={30} value={onset} disabled={!fault} onChange={(e) => setOnset(+e.target.value)} />
           </div>
           <div>
-            <div className="field-label">4 · Mission profile</div>
+            <div className="field-label">{simple ? '4 · Flying conditions' : '4 · Mission profile'}</div>
             <select value={profile} onChange={(e) => setProfile(e.target.value)} style={{ width: '100%' }}>
               {Object.entries(PROFILES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
         </div>
-        <div className="grid g2 mt" style={{ alignItems: 'end' }}>
+        {!simple && <div className="grid g2 mt" style={{ alignItems: 'end' }}>
           <div>
             <div className="field-label">5 · Reality gap: {gap.toFixed(2)} {gap === 0 ? '(engine matches the twin exactly)' : gap < 0.15 ? '(small mismatch)' : '(large mismatch)'}</div>
             <input type="range" aria-label="Reality gap" style={{ '--p': `${gap * 100}%` }} min={0} max={1} step={0.05} value={gap} onChange={(e) => setGap(+e.target.value)} />
@@ -152,14 +184,14 @@ export default function FaultLab() {
             <input type="checkbox" checked={calibrate} disabled={gap === 0} onChange={(e) => setCalibrate(e.target.checked)} />
             Per-engine calibration (healthy reference flight first)
           </label>
-        </div>
+        </div>}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 18 }}>
-          <button className="btn primary" onClick={go} disabled={busy} style={{ padding: '11px 20px', fontSize: 14 }}>
+          <button className="btn caution" onClick={go} disabled={busy} style={{ height: 42, padding: '0 20px', fontSize: 14 }}>
             {busy ? <LoaderCircle size={17} className="spin" /> : <FlaskConical size={17} />}
-            {busy ? 'Simulating 1-hour flight…' : 'Run simulation'}
+            {busy ? 'Simulating 1-hour flight…' : simple ? 'Run' : 'Run simulation'}
           </button>
           <span className="dim" style={{ fontSize: 12.5 }}>
-            <Sparkles size={13} style={{ verticalAlign: -2 }} /> 3,600 physics steps, 355 ML windows and a 1,320-particle filter, ≈ 2 s
+            <Sparkles size={13} style={{ verticalAlign: -2 }} /> {simple ? 'Takes about 2 seconds' : '3,600 physics steps, 355 ML windows and a 1,320-particle filter, ≈ 2 s'}
           </span>
           {error && <span style={{ color: 'var(--crit)' }}>{error}</span>}
         </div>
@@ -172,12 +204,12 @@ export default function FaultLab() {
             <div>
               <div style={{ fontWeight: 800, fontSize: 17 }}>{verdict.title}</div>
               <div className="muted" style={{ fontSize: 13, marginTop: 3 }}>{verdict.text}</div>
-              {twinLine && <div style={{ fontSize: 13, marginTop: 6, color: 'var(--accent-2)' }}><Atom size={13} style={{ verticalAlign: -2 }} /> {twinLine}</div>}
-              {cusumLine && <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{cusumLine}</div>}
+              {twinLine && !simple && <div style={{ fontSize: 13, marginTop: 6, color: 'var(--accent-2)' }}><Atom size={13} style={{ verticalAlign: -2 }} /> {twinLine}</div>}
+              {cusumLine && !simple && <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{cusumLine}</div>}
             </div>
-            <div className="mono dim" style={{ marginLeft: 'auto', fontSize: 11, textAlign: 'right' }}>
+            {!simple && <div className="mono dim" style={{ marginLeft: 'auto', fontSize: 11, textAlign: 'right' }}>
               run #{runNo} · seed {run.seed}<br />{PROFILES[run.profile]}<br />reality gap {run.gap.toFixed(2)}{run.calibrated ? ' · calibrated' : ''}
-            </div>
+            </div>}
           </div>
           <div className="mt">
             <TwinViewer

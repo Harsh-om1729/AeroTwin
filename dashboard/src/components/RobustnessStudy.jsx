@@ -23,7 +23,7 @@ function Tip({ active, payload, label, fmt }) {
   );
 }
 
-const PANEL = '#241650';
+const PANEL = '#2e1a3c';
 
 // One shared legend for the small multiples: swatch + name in text ink
 function MethodLegend({ methods = ORDER }) {

@@ -10,14 +10,15 @@ import Copilot from './pages/Copilot';
 import Background from './components/Background';
 import BootScreen from './components/BootScreen';
 import Logo from './components/Logo';
+import { ViewProvider, ViewSwitch } from './ui/viewMode';
 
 const PAGES = [
-  { id: 'fleet', label: 'Fleet Command', icon: LayoutGrid },
-  { id: 'twin', label: 'Twin Replay', icon: Activity },
-  { id: 'lab', label: 'Fault Injection Lab', icon: FlaskConical },
-  { id: 'copilot', label: 'AI Copilot', icon: Bot },
-  { id: 'validation', label: 'Model Validation', icon: BarChart3 },
-  { id: 'architecture', label: 'How it works', icon: Network },
+  { id: 'fleet', label: 'Fleet overview', short: 'Fleet', icon: LayoutGrid },
+  { id: 'twin', label: 'Flight replay', short: 'Replay', icon: Activity },
+  { id: 'lab', label: 'Try a fault', short: 'Lab', icon: FlaskConical },
+  { id: 'copilot', label: 'Ask the AI', short: 'Ask AI', icon: Bot },
+  { id: 'validation', label: 'How accurate is it?', short: 'Accuracy', icon: BarChart3 },
+  { id: 'architecture', label: 'How it works', short: 'How', icon: Network },
 ];
 
 // page + selected aircraft live in the URL hash so refresh/back keep your place
@@ -91,32 +92,39 @@ export default function App() {
   }
 
   return (
-    <>
+    <ViewProvider>
     <Background />
     <div className="shell">
-      <aside className="sidebar">
+      <aside className="sidebar glass-rail">
         <div className="brand">
           <div className="brand-logo"><Logo /></div>
-          <div>
+          <div className="brand-text">
             <div className="brand-name">AeroTwin</div>
             <div className="brand-sub">Engine Digital Twin</div>
           </div>
         </div>
+        <div className="nav-section label">Operations</div>
         <nav className="nav-list" aria-label="Pages">
           <span className="nav-ind" style={{ '--i': PAGES.findIndex((p) => p.id === page) }} />
           {PAGES.map((p) => (
-            <button key={p.id} className={`nav-btn ${page === p.id ? 'active' : ''}`} aria-current={page === p.id ? 'page' : undefined} onClick={() => go(p.id)}>
-              <p.icon size={18} /> {p.label}
+            <button key={p.id} className={`nav-btn ${page === p.id ? 'active' : ''}`} data-label={p.label}
+              aria-current={page === p.id ? 'page' : undefined} onClick={() => go(p.id)}>
+              <p.icon size={18} strokeWidth={1.75} />
+              <span className="nav-label">{p.label}</span>
+              <span className="nav-short" aria-hidden="true">{p.short}</span>
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          <div className="conn"><span className={`live-dot ${error ? 'down' : ''}`} />{error ? 'Backend unreachable' : 'Backend connected'}</div>
-          <div style={{ marginTop: 6 }}>Predictive health monitoring for MALE-UAV aero-piston engines (Rotax 912 class).</div>
+        <div className="sys-status" role="status">
+          <div className="sys-conn" title={error ? 'Backend unreachable' : 'Backend connected'}>
+            <span className={`dot ${error ? 'down' : 'pulse'}`} />
+            <span className="sys-text">{error ? 'Backend unreachable' : 'Backend connected'}</span>
+          </div>
+          <div className="sys-desc">Predictive health monitoring for MALE-UAV aero-piston engines (Rotax 912 class).</div>
         </div>
       </aside>
-      <main className="main"><div key={`${page}/${sel || ''}/${fleet && booted ? 1 : 0}`} className="page-anim">{content}</div></main>
+      <main className="main">{fleet && booted && !error && <ViewSwitch />}<div key={`${page}/${sel || ''}/${fleet && booted ? 1 : 0}`} className="page-anim">{content}</div></main>
     </div>
-    </>
+    </ViewProvider>
   );
 }
